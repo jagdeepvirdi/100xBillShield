@@ -1,0 +1,17 @@
+# dependencies and build output
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# local tooling
+.code-review-graph/
+sessions/
+TASKS.md
+.vercel/
