@@ -545,3 +545,27 @@ ol {
   font-weight: 600;
   color: var(--brand);
 }
+
+/* Status banner variants and the "needs your answer" rows */
+.callout.bad {
+  border-left-color: var(--flag);
+}
+
+.callout.warn {
+  border-left-color: var(--warn);
+}
+
+.question {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.question .actions {
+  display: flex;
+  gap: 0.5rem;
+}

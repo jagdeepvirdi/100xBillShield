@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { isDetailRule, latestRun } from "@/lib/detailChecks";
+import { loadChecks } from "@/app/bills/loadChecks";
+import { resolveChecks } from "@/lib/answers";
 import { mostImportant, toFact } from "@/lib/message";
 import { createClient } from "@/lib/supabase/server";
 import { writeMessage } from "@/lib/writeMessage";
@@ -22,19 +23,14 @@ export async function POST(request: Request) {
   if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
   // Only the check results go to the model, never the raw bill. RLS limits rows to the caller's.
-  const { data: rows } = await supabase
-    .from("check_result")
-    .select("rule, expected, actual, verdict, line_item_id, created_at")
-    .eq("bill_id", billId)
-    .order("created_at", { ascending: false })
-    .limit(200);
-  if (!rows?.length) return NextResponse.json({ error: "Run the checks first." }, { status: 409 });
+  const { run, detail, answers } = await loadChecks(supabase, billId);
+  if (!run.length && !detail.length) return NextResponse.json({ error: "Run the checks first." }, { status: 409 });
 
-  // The newest run counts, plus the detail checks saved when the lines were confirmed.
-  const issue = mostImportant([
-    ...latestRun(rows.filter((row) => !isDetailRule(row.rule))),
-    ...latestRun(rows.filter((row) => isDetailRule(row.rule))),
-  ]);
+  // Wrong lines and lines the user disputed count. Lines still waiting for an answer, or that the user
+  // said they expected, never become a complaint.
+  const issue = mostImportant(
+    resolveChecks([...detail, ...run], answers).filter((row) => row.state === "wrong" || row.state === "disputed"),
+  );
   if (!issue) return NextResponse.json({ message: null, reason: "Every line checks out." });
 
   const { data: line } = await supabase

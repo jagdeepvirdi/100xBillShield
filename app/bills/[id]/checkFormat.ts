@@ -1,3 +1,5 @@
+import type { State } from "@/lib/answers";
+
 export type CheckRow = {
   id: string;
   rule: string;
@@ -5,6 +7,7 @@ export type CheckRow = {
   actual: number | string | null;
   verdict: string;
   line_item_id: string | null;
+  state: State;
 };
 
 export const money = (value: number | string | null) => (value === null ? "-" : Number(value).toFixed(2));
@@ -16,3 +19,12 @@ export function difference(row: CheckRow) {
 }
 
 export const verdictClass = (verdict: string) => `verdict verdict-${verdict}`;
+
+// What the table shows for a resolved check. The word "unexplained" is never shown: those lines are asked
+// about, and after the answer they read as ok or disputed.
+const STATE_LABEL = { ok: "ok", wrong: "wrong", disputed: "disputed", pending: "waiting", unconfirmed: "not confirmed" };
+const STATE_CLASS = { ok: "ok", wrong: "wrong", disputed: "unexplained", pending: "unexplained", unconfirmed: "unexplained" };
+// An unexplained line that counts as ok is one the user said they expected.
+export const ruleText = (row: CheckRow) => (row.verdict === "unexplained" && row.state === "ok" ? `${row.rule} (you expected this)` : row.rule);
+export const stateLabel = (row: CheckRow) => STATE_LABEL[row.state];
+export const stateClass = (row: CheckRow) => `verdict verdict-${STATE_CLASS[row.state]}`;

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { loadStatuses } from "./loadStatuses";
+import StatusBadge from "./StatusBadge";
 import { billTypeLabel, formatStamp, periodText } from "./format";
 
 export default async function BillsPage() {
@@ -10,6 +12,7 @@ export default async function BillsPage() {
     .from("bill")
     .select("id, provider, bill_type, period_start, period_end, created_at")
     .order("created_at", { ascending: false });
+  const statuses = await loadStatuses(supabase);
 
   return (
     <main>
@@ -58,6 +61,7 @@ export default async function BillsPage() {
                   </div>
                 </div>
                 <div className="row-side">
+                  <StatusBadge status={statuses.get(bill.id) ?? "unread"} />
                   <span className="pill">{billTypeLabel(bill.bill_type)}</span>
                   <span className="chevron" aria-hidden="true">
                     &rsaquo;

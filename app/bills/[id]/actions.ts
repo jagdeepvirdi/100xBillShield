@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { ANSWER_DISPUTE, ANSWER_EXPECTED } from "@/lib/answers";
 import { billInfoSchema } from "@/lib/billInfo";
 import { runChecks } from "@/lib/checks";
 import { isOneOff } from "@/lib/billTypes";
@@ -96,6 +97,9 @@ export async function confirmLines(
     }
   }
 
+  // The checks run as soon as the lines are confirmed. If none applies yet, the user can run them later.
+  await insertChecks(supabase, parsed.data.billId);
+
   revalidatePath(`/bills/${parsed.data.billId}`);
   return {};
 }
@@ -165,6 +169,9 @@ export async function savePromise(formData: FormData) {
   const { error } = await supabase.from("promise").insert(parsed.data);
   if (error) failPromise(billId, `Could not save the promise: ${error.message}`);
 
+  // A new promise changes what the bill is checked against, so the checks run again (earlier runs are kept).
+  await insertChecks(supabase, billId);
+
   revalidatePath(`/bills/${billId}`);
   redirect(`/bills/${billId}`);
 }
@@ -193,24 +200,20 @@ async function loadPreviousLines(supabase: Supabase, bill: { provider: string | 
 }
 
 // Each run adds a new set of check_result rows; earlier runs are kept.
-export async function runBillChecks(formData: FormData) {
-  const billId = String(formData.get("bill_id") ?? "");
-  if (!z.uuid().safeParse(billId).success) redirect("/bills");
-
-  const supabase = await createClient();
+async function insertChecks(supabase: Supabase, billId: string): Promise<{ error?: string }> {
   const { data: bill } = await supabase
     .from("bill")
     .select("provider, bill_type, period_end, created_at")
     .eq("id", billId)
     .maybeSingle();
-  if (!bill) redirect("/bills");
+  if (!bill) return { error: "Bill not found." };
 
   const { data: lines } = await supabase
     .from("line_item")
     .select("id, label, amount")
     .eq("bill_id", billId)
     .order("line_no");
-  if (!lines?.length) failChecks(billId, "Confirm the bill lines first.");
+  if (!lines?.length) return { error: "Confirm the bill lines first." };
 
   const { data: promise } = await supabase
     .from("promise")
@@ -232,7 +235,7 @@ export async function runBillChecks(formData: FormData) {
     periodEnd: bill.period_end,
   });
   if (results.length === 0) {
-    failChecks(billId, "No check applies yet: the lines have no total, no tax rate and there is no earlier bill to compare.");
+    return { error: "No check applies yet: the lines have no total, no tax rate and there is no earlier bill to compare." };
   }
 
   const { error } = await supabase.from("check_result").insert(
@@ -245,8 +248,52 @@ export async function runBillChecks(formData: FormData) {
       verdict: r.verdict,
     })),
   );
-  if (error) failChecks(billId, `Could not save the checks: ${error.message}`);
+  if (error) return { error: `Could not save the checks: ${error.message}` };
+  return {};
+}
 
+export async function runBillChecks(formData: FormData) {
+  const billId = String(formData.get("bill_id") ?? "");
+  if (!z.uuid().safeParse(billId).success) redirect("/bills");
+
+  const supabase = await createClient();
+  const { error } = await insertChecks(supabase, billId);
+  if (error) failChecks(billId, error);
+
+  revalidatePath(`/bills/${billId}`);
+  redirect(`/bills/${billId}`);
+}
+
+const answerSchema = z.object({
+  bill_id: z.uuid(),
+  line_item_id: z.uuid(),
+  answer: z.enum(["expected", "dispute"]),
+});
+
+// The user's answer about an unexplained line is added as its own row, so an earlier answer is kept and
+// the newest one counts.
+export async function answerLine(formData: FormData) {
+  const parsed = answerSchema.safeParse({
+    bill_id: formData.get("bill_id"),
+    line_item_id: formData.get("line_item_id"),
+    answer: formData.get("answer"),
+  });
+  if (!parsed.success) redirect("/bills");
+  const { bill_id: billId, line_item_id: lineId, answer } = parsed.data;
+
+  const supabase = await createClient();
+  // RLS rejects the insert if the bill or line is not the caller's.
+  const { error } = await supabase.from("check_result").insert({
+    bill_id: billId,
+    line_item_id: lineId,
+    rule: answer === "expected" ? ANSWER_EXPECTED : ANSWER_DISPUTE,
+    expected: null,
+    actual: null,
+    verdict: answer === "expected" ? "ok" : "wrong",
+  });
+  if (error) failChecks(billId, `Could not save your answer: ${error.message}`);
+
+  revalidatePath("/bills");
   revalidatePath(`/bills/${billId}`);
   redirect(`/bills/${billId}`);
 }

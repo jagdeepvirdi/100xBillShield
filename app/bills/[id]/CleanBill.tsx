@@ -1,4 +1,4 @@
-import { difference, money, type CheckRow } from "./checkFormat";
+import { difference, money, ruleText, type CheckRow } from "./checkFormat";
 
 // Shown when every check passed: the maths, one line per check. No message is written for a clean bill.
 export default function CleanBill({ rows, labels }: { rows: CheckRow[]; labels: Map<string, string> }) {
@@ -17,7 +17,7 @@ export default function CleanBill({ rows, labels }: { rows: CheckRow[]; labels: 
           return (
             <li key={row.id}>
               <div>
-                {row.rule}
+                {ruleText(row)}
                 {label ? ` (${label})` : ""}
               </div>
               <div className="muted">

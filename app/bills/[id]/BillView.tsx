@@ -1,9 +1,12 @@
 import Link from "next/link";
+import type { BillStatus } from "@/lib/billStatus";
 import { isOneOff } from "@/lib/billTypes";
 import type { LineHistory } from "@/lib/history";
+import { STATUS } from "../StatusBadge";
 import { billTypeLabel, formatDay, formatStamp, periodText } from "../format";
 import { runBillChecks, savePromise } from "./actions";
 import type { CheckRow } from "./checkFormat";
+import AnswerBox, { type Answered, type Question } from "./AnswerBox";
 import CheckResults from "./CheckResults";
 import CleanBill from "./CleanBill";
 import DeleteBill from "./DeleteBill";
@@ -21,6 +24,10 @@ export type BillViewProps = {
   promise: { plan_price: Money; tax_included: boolean | null; discount: Money; effective_from: string | null; notes: string | null } | null;
   checks: CheckRow[];
   detailChecks: CheckRow[];
+  status: BillStatus;
+  sentAt: string | null;
+  questions: Question[];
+  answered: Answered[];
   histories: LineHistory[];
   message: { id: string; draft: string; sent_text: string | null; sent_at: string | null; words_changed: number | null } | null;
   promiseError?: string;
@@ -29,7 +36,7 @@ export type BillViewProps = {
   editError?: string;
 };
 
-function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolean; allOk: boolean; hasIssues: boolean; message: BillViewProps["message"] }) {
+function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolean; hasIssues: boolean; message: BillViewProps["message"] }) {
   if (!s.hasLines) {
     return {
       title: "Next: read your bill",
@@ -44,9 +51,6 @@ function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolea
           text: "Fill in the promise form below (plan price, tax, discount), then run the checks. Without it BillShield can only check the maths.",
         };
   }
-  if (s.allOk) {
-    return { good: true, title: "Every line checks out", text: "There is nothing to dispute and no message to send. The maths is shown below." };
-  }
   if (s.hasIssues && !s.message) {
     return { title: "Next: write your message", text: "BillShield found a line to question. Choose a tone and press Write the message." };
   }
@@ -56,20 +60,20 @@ function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolea
       text: "Copy it, send it to the company, then paste what you actually sent below so it is recorded.",
     };
   }
-  if (s.message) {
-    return { good: true, title: "Your message is recorded", text: "If you change the promise, run the checks again to see whether anything changed." };
-  }
   return null;
 }
 
-export default function BillView({ bill, lines, promise, checks, detailChecks, histories, message, promiseError, checkError, deleteError, editError }: BillViewProps) {
+export default function BillView({ bill, lines, promise, checks, detailChecks, status, sentAt, questions, answered, histories, message, promiseError, checkError, deleteError, editError }: BillViewProps) {
   const labels = new Map(lines.map((line) => [line.id, line.label]));
-  const shown = [...detailChecks, ...checks];
-  const hasIssues = shown.some((row) => row.verdict !== "ok" && row.line_item_id);
-  const allOk = checks.length > 0 && shown.every((row) => row.verdict === "ok");
+  // Lines still waiting for an answer are asked about above the checks, not listed in them.
+  const shown = [...detailChecks, ...checks].filter((row) => row.state !== "pending");
+  const hasIssues = shown.some((row) => (row.state === "wrong" || row.state === "disputed") && row.line_item_id);
+  const allOk = status === "verified";
+  const banner = STATUS[status];
+  const sentOn = sentAt ? formatStamp(sentAt) : null;
   // A one-off purchase has no promised plan, so nothing is waited for there.
   const oneOff = isOneOff(bill.bill_type);
-  const step = nextStep({ hasLines: lines.length > 0, hasPromise: oneOff || Boolean(promise), hasChecks: checks.length > 0, allOk, hasIssues, message });
+  const step = nextStep({ hasLines: lines.length > 0, hasPromise: oneOff || Boolean(promise), hasChecks: checks.length > 0, hasIssues, message });
 
   return (
     <main>
@@ -90,12 +94,25 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, h
 
       <EditBill billId={bill.id} defaults={bill} error={editError} />
 
+      {banner.text && (
+        <div className={`callout ${banner.tone}`}>
+          <h2>{banner.label}</h2>
+          <p>
+            {banner.text}
+            {status === "sent" && sentOn ? ` You sent it on ${sentOn}.` : ""}
+            {status === "verified" && sentOn ? ` You sent a message about this bill on ${sentOn}.` : ""}
+          </p>
+        </div>
+      )}
+
       {step && (
-        <div className={`callout${step.good ? " good" : ""}`}>
+        <div className="callout">
           <h2>{step.title}</h2>
           <p>{step.text}</p>
         </div>
       )}
+
+      {(questions.length > 0 || answered.length > 0) && <AnswerBox billId={bill.id} questions={questions} answered={answered} />}
 
       {lines.length > 0 ? (
         <section>
@@ -193,7 +210,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, h
               {checks.length > 0 ? "Run the checks again" : "Run the checks"}
             </button>
           </form>
-          {!oneOff && <p className="muted">Run them again after you save or change the promise.</p>}
+          {!oneOff && <p className="muted">Saving a new promise runs the checks again for you.</p>}
         </section>
       )}
 
