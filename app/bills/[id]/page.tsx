@@ -1,10 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { savePromise } from "./actions";
 import LinesEditor from "./LinesEditor";
 
-export default async function BillPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function BillPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ promise_error?: string }>;
+}) {
   const { id } = await params;
+  const { promise_error } = await searchParams;
   const supabase = await createClient();
 
   // RLS hides other users' bills, so a foreign or bad id gives no row.
@@ -21,6 +29,15 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
     .select("id, label, amount")
     .eq("bill_id", id)
     .order("line_no");
+
+  // Promises are never overwritten; the newest one is the one in force.
+  const { data: promise } = await supabase
+    .from("promise")
+    .select("plan_price, tax_included, discount, effective_from, notes")
+    .eq("bill_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   return (
     <main>
@@ -50,6 +67,56 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
       ) : (
         <LinesEditor billId={bill.id} />
       )}
+
+      <section>
+        <h2>What you were promised</h2>
+        {promise && (
+          <ul>
+            <li>Plan price: {promise.plan_price}</li>
+            <li>Tax included: {promise.tax_included ? "yes" : "no"}</li>
+            <li>Discount: {promise.discount === null ? "none" : `${promise.discount}%`}</li>
+            <li>Effective from: {promise.effective_from ?? "not given"}</li>
+            {promise.notes && <li>Notes: {promise.notes}</li>}
+          </ul>
+        )}
+        <h3>{promise ? "Save a new promise" : "Save the promise"}</h3>
+        {promise_error && <p role="alert">{promise_error}</p>}
+        <form action={savePromise}>
+          <input type="hidden" name="bill_id" value={bill.id} />
+          <p>
+            <label>
+              Plan price <input name="plan_price" type="number" step="0.01" min="0" required />
+            </label>
+          </p>
+          <p>
+            <label>
+              Tax included in that price?{" "}
+              <select name="tax_included" required>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+          </p>
+          <p>
+            <label>
+              Discount % (optional) <input name="discount" type="number" step="0.01" min="0" max="100" />
+            </label>
+          </p>
+          <p>
+            <label>
+              Effective from (optional) <input name="effective_from" type="date" />
+            </label>
+          </p>
+          <p>
+            <label>
+              Notes (optional, no account numbers, phone numbers or addresses)
+              <br />
+              <textarea name="notes" rows={3} maxLength={1000} />
+            </label>
+          </p>
+          <button type="submit">Save promise</button>
+        </form>
+      </section>
     </main>
   );
 }

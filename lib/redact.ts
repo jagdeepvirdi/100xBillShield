@@ -9,15 +9,19 @@ const LABELLED_ID =
 const PHONE = /\+?\d[\d\s().-]{8,}\d/g;
 const LONG_DIGITS = /\d{6,}/g;
 
-export function redactLabel(label: string): string {
-  if (ADDRESS_WORDS.test(label)) return PLACEHOLDER;
-
-  const cleaned = label
+// Free text (promise notes): strips ids and phone numbers, keeps the rest.
+export function redactText(text: string): string {
+  return text
     .replace(LABELLED_ID, " ")
     .replace(PHONE, " ")
     .replace(LONG_DIGITS, " ")
-    .replace(/\s+/g, " ")
-    .replace(/^[\s:,;#-]+|[\s:,;#-]+$/g, "");
+    .replace(/[^\S\n]+/g, " ")
+    .trim();
+}
 
+export function redactLabel(label: string): string {
+  if (ADDRESS_WORDS.test(label)) return PLACEHOLDER;
+
+  const cleaned = redactText(label).replace(/^[\s:,;#-]+|[\s:,;#-]+$/g, "");
   return cleaned || PLACEHOLDER;
 }
