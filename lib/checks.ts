@@ -65,6 +65,8 @@ export function classify(label: string): Kind {
   ) {
     return "total";
   }
+  // Any other "total" (Bill Total, Total (Rs.), Net Total) is the printed total, except counts and savings.
+  if (/\btotal\b/.test(l) && !/\b(discount|savings?|rebate|qty|quantity|items?|units?|kwh)\b/.test(l)) return "total";
   if (/\bround(ing|ed)?\b/.test(l)) return "rounding";
   if (/\bsubsid(y|ies)\b|\bdbtl\b/.test(l)) return "subsidy";
   if (/\b(discount|rebate|waiver|cashback)\b/.test(l)) return "discount";
@@ -102,6 +104,30 @@ function pickSum(current: Classified[], target: number): number {
 
 const ofKind = (lines: Classified[], ...kinds: Kind[]) => lines.filter((l) => kinds.includes(l.kind));
 
+// A charge that equals the printed total, while the other lines already add up to it, is the total printed
+// again under a label we did not recognise. Counting it would double the sum.
+function markRepeatedTotals(lines: Classified[]): Classified[] {
+  const total = ofKind(lines, "total", "current_total").at(-1);
+  if (!total) return lines;
+  const counted = ["charge", "tax", "discount", "subsidy", "rounding"];
+  return lines.map((l) => {
+    if (l.kind !== "charge" || !close(l.cents, total.cents)) return l;
+    const rest = lines.filter((o) => o !== l && counted.includes(o.kind));
+    return rest.length > 0 && close(pickSum(rest, total.cents), total.cents) ? { ...l, kind: "total" } : l;
+  });
+}
+
+// When the sum is off by exactly one line, that line is probably a repeated total. Saying "wrong" would be a
+// guess, so the result is left unconfirmed and tied to no line, which means no message is written for it.
+function sumResult(rule: string, current: Classified[], target: Classified): CheckResult {
+  const expected = pickSum(current, target.cents);
+  const checked = judge(rule, expected, target.cents, target.id);
+  if (checked.verdict === "ok") return checked;
+  const gap = Math.abs(expected - target.cents);
+  if (!current.some((l) => close(Math.abs(l.cents), gap))) return checked;
+  return result(`${rule}: cannot be confirmed, a line may repeat a total`, null, null, "unexplained");
+}
+
 function sumChecks(lines: Classified[]): CheckResult[] {
   const total = ofKind(lines, "total").at(-1);
   if (!total) return [];
@@ -112,19 +138,12 @@ function sumChecks(lines: Classified[]): CheckResult[] {
 
   if (opening.length === 0 && payments.length === 0) {
     const target = currentTotal ?? total;
-    return [judge("Sum of the lines vs the printed total", pickSum(current, target.cents), target.cents, target.id)];
+    return [sumResult("Sum of the lines vs the printed total", current, target)];
   }
 
   const out: CheckResult[] = [];
   if (currentTotal) {
-    out.push(
-      judge(
-        "Sum of the charge lines vs the printed current charges",
-        pickSum(current, currentTotal.cents),
-        currentTotal.cents,
-        currentTotal.id,
-      ),
-    );
+    out.push(sumResult("Sum of the charge lines vs the printed current charges", current, currentTotal));
   }
   const openingC = sum(opening.map((l) => l.cents));
   const paidC = sum(payments.map((l) => Math.abs(l.cents)));
@@ -253,7 +272,7 @@ function previousChecks(lines: Classified[], previousLines: CheckLine[] | null):
 }
 
 function classifyAll(lines: CheckLine[]): Classified[] {
-  return lines.map((l) => ({ ...l, kind: classify(l.label), cents: toCents(l.amount) }));
+  return markRepeatedTotals(lines.map((l) => ({ ...l, kind: classify(l.label), cents: toCents(l.amount) })));
 }
 
 export function runChecks(input: CheckInput): CheckResult[] {

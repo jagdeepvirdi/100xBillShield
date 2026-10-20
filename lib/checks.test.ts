@@ -173,3 +173,45 @@ describe("classify", () => {
     expect(classify("DBTL subsidy")).toBe("subsidy");
   });
 });
+
+describe("a total printed more than once", () => {
+  // Reviewer's food bill: items 203.81 plus 10.20 tax is 214.01; the printed total is 214.00.
+  const bill = (totalLabel: string) => [
+    line("Food items", 203.81),
+    line("CGST 2.5%", 5.1),
+    line("SGST 2.5%", 5.1),
+    line("Sub Total", 203.81),
+    line(totalLabel, 214),
+    line("Grand Total", 214),
+  ];
+  const sumCheck = (lines: CheckLine[]) =>
+    find(runChecks({ lines, promise: null, previousLines: null, periodEnd: null }), "Sum of the lines");
+
+  it.each(["Total", "Bill Total", "Total (Rs.)", "Total Rs", "Total Value", "Net Total", "Food Total", "Total Payable"])(
+    "does not count '%s' as a charge",
+    (label) => {
+      expect(sumCheck(bill(label))).toMatchObject({ expected: 214.01, actual: 214, verdict: "ok" });
+    },
+  );
+
+  it("still treats a total discount or item count as what it says", () => {
+    expect(classify("Total Discount")).toBe("discount");
+    expect(classify("Total Items")).toBe("charge");
+  });
+
+  it("counts a single charge that equals the total", () => {
+    const lines = [line("Plan charge", 499), line("Total amount due", 499)];
+    expect(sumCheck(lines)).toMatchObject({ expected: 499, actual: 499, verdict: "ok" });
+  });
+
+  it("leaves the sum unconfirmed, with no line to dispute, when one line explains the whole gap", () => {
+    const lines = [line("Service", 100), line("Fee", 50), line("Total amount due", 100)];
+    const unsure = runChecks({ lines, promise: null, previousLines: null, periodEnd: null })[0];
+    expect(unsure).toMatchObject({ verdict: "unexplained", expected: null, actual: null, lineId: null });
+  });
+
+  it("still reports a genuine wrong total", () => {
+    const lines = [line("Service", 100), line("Fee", 37), line("Total amount due", 150)];
+    expect(sumCheck(lines)).toMatchObject({ expected: 137, actual: 150, verdict: "wrong" });
+  });
+});
