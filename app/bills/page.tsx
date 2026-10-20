@@ -18,6 +18,9 @@ export default async function BillsPage() {
     <main>
       <h1>Your bills</h1>
       <p>Signed in as {user?.email}</p>
+      <p>
+        <Link href="/bills/new">Upload a bill</Link>
+      </p>
       <form action={logout}>
         <button type="submit">Log out</button>
       </form>
