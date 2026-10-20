@@ -14,3 +14,5 @@ export function difference(row: CheckRow) {
   if (row.expected === null || row.actual === null) return "-";
   return (Number(row.actual) - Number(row.expected)).toFixed(2);
 }
+
+export const verdictClass = (verdict: string) => `verdict verdict-${verdict}`;

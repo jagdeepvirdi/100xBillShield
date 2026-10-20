@@ -1,0 +1,45 @@
+.header {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.inner {
+  width: 100%;
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0.8rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem 0.9rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.navLink {
+  padding: 0.4rem 0.6rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.navLink:hover {
+  background: var(--tint);
+}
+
+.email {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 40rem) {
+  .email {
+    display: none;
+  }
+}

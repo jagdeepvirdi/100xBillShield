@@ -1,15 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { lineHistories } from "@/lib/history";
 import { createClient } from "@/lib/supabase/server";
-import { runBillChecks, savePromise } from "./actions";
-import CheckResults from "./CheckResults";
-import CleanBill from "./CleanBill";
-import EarlierBills from "./EarlierBills";
-import LinesEditor from "./LinesEditor";
+import BillView from "./BillView";
 import { loadEarlierLines } from "./loadEarlier";
-import MessageBox from "./MessageBox";
-import SentTracker from "./SentTracker";
 
 export default async function BillPage({
   params,
@@ -54,15 +47,13 @@ export default async function BillPage({
     .order("created_at", { ascending: false })
     .limit(200);
   const latestChecks = checkRows?.filter((row) => row.created_at === checkRows[0].created_at) ?? [];
-  const lineLabels = new Map((lines ?? []).map((line) => [line.id, line.label]));
+
   const histories = lineHistories(
     (lines ?? []).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })),
     await loadEarlierLines(supabase, bill.created_at),
   );
-  const hasIssues = latestChecks.some((row) => row.verdict !== "ok" && row.line_item_id);
-  const allOk = latestChecks.length > 0 && latestChecks.every((row) => row.verdict === "ok");
 
-  const { data: latestMessage } = await supabase
+  const { data: message } = await supabase
     .from("message")
     .select("id, draft, sent_text, sent_at, words_changed")
     .eq("bill_id", id)
@@ -71,116 +62,15 @@ export default async function BillPage({
     .maybeSingle();
 
   return (
-    <main>
-      <p>
-        <Link href="/bills">Back to bills</Link>
-      </p>
-      <h1>{bill.provider ?? "Unknown provider"}</h1>
-      <p>Type: {bill.bill_type}</p>
-      <p>
-        Period: {bill.period_start ?? "?"} to {bill.period_end ?? "?"}
-      </p>
-      <p>Added: {new Date(bill.created_at).toLocaleDateString("en-GB")}</p>
-      {lines && lines.length > 0 ? (
-        <section>
-          <h2>Bill lines</h2>
-          <table>
-            <tbody>
-              {lines.map((line) => (
-                <tr key={line.id}>
-                  <td>{line.label}</td>
-                  <td>{line.amount}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      ) : (
-        <LinesEditor billId={bill.id} />
-      )}
-
-      {histories.length > 0 && <EarlierBills histories={histories} />}
-
-      {lines && lines.length > 0 && (
-        <section>
-          <h2>Checks</h2>
-          {check_error && <p role="alert">{check_error}</p>}
-          {allOk && <CleanBill rows={latestChecks} labels={lineLabels} />}
-          {latestChecks.length > 0 && !allOk && <CheckResults rows={latestChecks} labels={lineLabels} />}
-          <form action={runBillChecks}>
-            <input type="hidden" name="bill_id" value={bill.id} />
-            <button type="submit">{latestChecks.length > 0 ? "Run the checks again" : "Run the checks"}</button>
-          </form>
-          <p>Run them again after you save or change the promise.</p>
-        </section>
-      )}
-
-      {hasIssues && (
-        <section>
-          <h2>Message to the company</h2>
-          <MessageBox billId={bill.id} />
-          {latestMessage && (
-            <SentTracker
-              key={latestMessage.id}
-              messageId={latestMessage.id}
-              draft={latestMessage.draft}
-              sentText={latestMessage.sent_text}
-              sentOn={latestMessage.sent_at ? new Date(latestMessage.sent_at).toLocaleDateString("en-GB") : null}
-              wordsChanged={latestMessage.words_changed}
-            />
-          )}
-        </section>
-      )}
-
-      <section>
-        <h2>What you were promised</h2>
-        {promise && (
-          <ul>
-            <li>Plan price: {promise.plan_price}</li>
-            <li>Tax included: {promise.tax_included ? "yes" : "no"}</li>
-            <li>Discount: {promise.discount === null ? "none" : `${promise.discount}%`}</li>
-            <li>Effective from: {promise.effective_from ?? "not given"}</li>
-            {promise.notes && <li>Notes: {promise.notes}</li>}
-          </ul>
-        )}
-        <h3>{promise ? "Save a new promise" : "Save the promise"}</h3>
-        {promise_error && <p role="alert">{promise_error}</p>}
-        <form action={savePromise}>
-          <input type="hidden" name="bill_id" value={bill.id} />
-          <p>
-            <label>
-              Plan price <input name="plan_price" type="number" step="0.01" min="0" required />
-            </label>
-          </p>
-          <p>
-            <label>
-              Tax included in that price?{" "}
-              <select name="tax_included" required>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-          </p>
-          <p>
-            <label>
-              Discount % (optional) <input name="discount" type="number" step="0.01" min="0" max="100" />
-            </label>
-          </p>
-          <p>
-            <label>
-              Effective from (optional) <input name="effective_from" type="date" />
-            </label>
-          </p>
-          <p>
-            <label>
-              Notes (optional, no account numbers, phone numbers or addresses)
-              <br />
-              <textarea name="notes" rows={3} maxLength={1000} />
-            </label>
-          </p>
-          <button type="submit">Save promise</button>
-        </form>
-      </section>
-    </main>
+    <BillView
+      bill={bill}
+      lines={lines ?? []}
+      promise={promise}
+      checks={latestChecks}
+      histories={histories}
+      message={message}
+      promiseError={promise_error}
+      checkError={check_error}
+    />
   );
 }

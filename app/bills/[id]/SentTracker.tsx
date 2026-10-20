@@ -39,10 +39,10 @@ export default function SentTracker({ messageId, draft, sentText, sentOn, wordsC
   }
 
   return (
-    <div>
+    <div className="stack">
       <pre style={{ whiteSpace: "pre-wrap" }}>{draft}</pre>
       <p>
-        <button type="button" onClick={copy}>
+        <button type="button" className="secondary" onClick={copy}>
           Copy message
         </button>{" "}
         {copied && <span>Copied.</span>}

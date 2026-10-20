@@ -34,7 +34,7 @@ export default function MessageBox({ billId }: { billId: string }) {
   }
 
   return (
-    <div>
+    <div className="stack">
       {error && <p role="alert">{error}</p>}
       {note && <p>{note}</p>}
       <label>

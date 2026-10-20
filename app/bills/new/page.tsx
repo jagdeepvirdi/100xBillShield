@@ -10,15 +10,25 @@ export default async function NewBillPage({
 
   return (
     <main>
-      <p>
-        <Link href="/bills">Back to bills</Link>
-      </p>
-      <h1>Upload a bill</h1>
+      <Link href="/bills" className="back">
+        &larr; Your bills
+      </Link>
+      <div className="page-head">
+        <div>
+          <h1>Upload a bill</h1>
+          <p className="lede">
+            Take a photo or choose a PDF. Next you will check the lines BillShield reads from it, so nothing is saved
+            until you confirm them.
+          </p>
+        </div>
+      </div>
+
       {error && <p role="alert">{error}</p>}
-      <form action={uploadBill}>
-        <p>
+
+      <section>
+        <form action={uploadBill} className="form-grid">
           <label>
-            Bill type{" "}
+            Bill type
             <select name="bill_type" required>
               <option value="lpg">LPG</option>
               <option value="electricity">Electricity</option>
@@ -27,25 +37,20 @@ export default async function NewBillPage({
               <option value="other">Other</option>
             </select>
           </label>
-        </p>
-        <p>
           <label>
-            Provider (optional) <input name="provider" type="text" />
+            Provider (optional)
+            <input name="provider" type="text" placeholder="For example, the company name" />
           </label>
-        </p>
-        <p>
           <label>
-            Period start (optional) <input name="period_start" type="date" />
+            Period start (optional)
+            <input name="period_start" type="date" />
           </label>
-        </p>
-        <p>
           <label>
-            Period end (optional) <input name="period_end" type="date" />
+            Period end (optional)
+            <input name="period_end" type="date" />
           </label>
-        </p>
-        <p>
-          <label>
-            Photo or PDF{" "}
+          <label className="full">
+            Photo or PDF (JPG, PNG, WebP or PDF, up to 4 MB)
             <input
               name="photo"
               type="file"
@@ -53,9 +58,11 @@ export default async function NewBillPage({
               required
             />
           </label>
-        </p>
-        <button type="submit">Upload</button>
-      </form>
+          <div className="full">
+            <button type="submit">Upload the bill</button>
+          </div>
+        </form>
+      </section>
     </main>
   );
 }

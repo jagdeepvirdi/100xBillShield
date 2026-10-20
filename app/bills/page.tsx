@@ -1,12 +1,9 @@
 import Link from "next/link";
-import { logout } from "@/app/auth/actions";
 import { createClient } from "@/lib/supabase/server";
+import { billTypeLabel, formatStamp, periodText } from "./format";
 
 export default async function BillsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
 
   // No user filter on purpose: RLS returns only this user's bills.
   const { data: bills, error } = await supabase
@@ -16,27 +13,53 @@ export default async function BillsPage() {
 
   return (
     <main>
-      <h1>Your bills</h1>
-      <p>Signed in as {user?.email}</p>
-      <p>
-        <Link href="/bills/new">Upload a bill</Link>
-      </p>
-      <form action={logout}>
-        <button type="submit">Log out</button>
-      </form>
+      <div className="page-head">
+        <div>
+          <h1>Your bills</h1>
+          <p className="lede">Open a bill to check its lines, or upload a new one.</p>
+        </div>
+        <Link href="/bills/new" className="btn">
+          Upload a bill
+        </Link>
+      </div>
 
-      {error && <p role="alert">Could not load bills: {error.message}</p>}
-      {bills?.length === 0 && <p>No bills yet.</p>}
-      <ul>
-        {bills?.map((bill) => (
-          <li key={bill.id}>
-            <Link href={`/bills/${bill.id}`}>
-              {bill.provider ?? "Unknown provider"} - {bill.bill_type}
-            </Link>{" "}
-            ({bill.period_start ?? "?"} to {bill.period_end ?? "?"})
-          </li>
-        ))}
-      </ul>
+      {error && <p role="alert">Could not load your bills: {error.message}</p>}
+
+      {bills?.length === 0 && (
+        <section className="empty">
+          <h2>No bills yet</h2>
+          <p>
+            Upload a photo or PDF of a bill. BillShield reads the lines, checks them against what you were promised,
+            and writes a message if something is wrong.
+          </p>
+          <Link href="/bills/new" className="btn">
+            Upload your first bill
+          </Link>
+        </section>
+      )}
+
+      {bills && bills.length > 0 && (
+        <ul className="bill-list">
+          {bills.map((bill) => (
+            <li key={bill.id}>
+              <Link href={`/bills/${bill.id}`} className="row-link">
+                <div>
+                  <div className="title">{bill.provider ?? "Unknown provider"}</div>
+                  <div className="muted">
+                    {periodText(bill.period_start, bill.period_end)}. Added {formatStamp(bill.created_at)}.
+                  </div>
+                </div>
+                <div className="row-side">
+                  <span className="pill">{billTypeLabel(bill.bill_type)}</span>
+                  <span className="chevron" aria-hidden="true">
+                    &rsaquo;
+                  </span>
+                </div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </main>
   );
 }

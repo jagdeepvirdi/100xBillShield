@@ -67,39 +67,41 @@ export default function LinesEditor({ billId }: { billId: string }) {
       <h2>Check the lines</h2>
       <p>Fix anything the reader got wrong, then confirm.</p>
       {error && <p role="alert">{error}</p>}
-      <table>
-        <thead>
-          <tr>
-            <th>Label</th>
-            <th>Amount</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={index}>
-              <td>
-                <input value={row.label} onChange={(e) => update(index, { label: e.target.value })} />
-              </td>
-              <td>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={row.amount}
-                  onChange={(e) => update(index, { amount: e.target.value })}
-                />
-              </td>
-              <td>
-                <button type="button" onClick={() => setRows(rows.filter((_, i) => i !== index))}>
-                  Remove
-                </button>
-              </td>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Label</th>
+              <th className="num">Amount</th>
+              <th />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={index}>
+                <td>
+                  <input value={row.label} onChange={(e) => update(index, { label: e.target.value })} />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={row.amount}
+                    onChange={(e) => update(index, { amount: e.target.value })}
+                  />
+                </td>
+                <td>
+                  <button type="button" className="secondary small" onClick={() => setRows(rows.filter((_, i) => i !== index))}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       <p>
-        <button type="button" onClick={() => setRows([...rows, { label: "", amount: "" }])}>
+        <button type="button" className="secondary" onClick={() => setRows([...rows, { label: "", amount: "" }])}>
           Add a line
         </button>{" "}
         <button type="button" onClick={confirm} disabled={busy || rows.length === 0}>

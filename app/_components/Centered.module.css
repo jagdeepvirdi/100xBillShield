@@ -1,0 +1,88 @@
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.top {
+  padding: 1.1rem clamp(1.25rem, 4vw, 2.5rem);
+}
+
+.center {
+  flex: 1;
+  display: grid;
+  place-items: start center;
+  padding: clamp(1rem, 6vh, 4rem) 1.25rem 4rem;
+}
+
+.card {
+  width: 100%;
+  max-width: 26rem;
+  padding: 2rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.07);
+}
+
+.card h1 {
+  font-size: 1.7rem;
+  letter-spacing: -0.02em;
+}
+
+.sub {
+  margin-top: 0.5rem;
+  color: var(--muted);
+}
+
+.body {
+  margin-top: 1.5rem;
+}
+
+.body > * + *,
+.body form > * + * {
+  margin-top: 1rem;
+}
+
+.body label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted);
+}
+
+.body input {
+  width: 100%;
+}
+
+.body button[type="submit"] {
+  width: 100%;
+  padding: 0.75rem 1rem;
+}
+
+.body a {
+  color: var(--brand);
+  text-underline-offset: 3px;
+}
+
+.body a:global(.btn) {
+  display: block;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  color: var(--on-brand);
+  text-decoration: none;
+}
+
+.footer {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.footer a {
+  color: var(--brand);
+  font-weight: 600;
+  text-underline-offset: 3px;
+}

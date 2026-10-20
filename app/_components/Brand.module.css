@@ -1,0 +1,17 @@
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--font-display), var(--font-geist-sans), sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.mark {
+  width: 1.7rem;
+  height: 1.7rem;
+  color: var(--brand);
+}

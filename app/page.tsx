@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Brand from "@/app/_components/Brand";
 import { createClient } from "@/lib/supabase/server";
 import styles from "./page.module.css";
 
@@ -30,21 +31,6 @@ const CHECKS = [
   "Opening balance plus charges minus payments matches what you owe",
   "Charges that are new or changed since your last bill from the same company",
 ];
-
-function Shield({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M12 2.5 4.5 5.5v6c0 4.6 3.1 8.6 7.5 10 4.4-1.4 7.5-5.4 7.5-10v-6L12 2.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path d="M8.5 9.5h7M8.5 15.5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M8.5 12.5h7" stroke="#ffe35a" strokeWidth="2.6" strokeLinecap="round" />
-    </svg>
-  );
-}
 
 function Tick({ className }: { className?: string }) {
   return (
@@ -80,10 +66,7 @@ export default async function Home() {
     <div className={styles.page}>
       <header className={`${styles.nav} ${styles.wrap}`}>
         <div className={styles.navInner}>
-          <Link href="/" className={styles.brand}>
-            <Shield className={styles.brandMark} />
-            BillShield
-          </Link>
+          <Brand />
           <nav className={styles.navActions} aria-label="Account">
             {user ? (
               <Link href="/bills" className={`${styles.btn} ${styles.btnSmall} ${styles.btnPrimary}`}>
