@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { readBillLines } from "@/lib/extract";
+import { readBill } from "@/lib/extract";
 import { redactLabel } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 
@@ -32,9 +32,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const lines = await readBillLines(signed.signedUrl, bill.image_link);
+    const { lines, details } = await readBill(signed.signedUrl, bill.image_link);
+    const clean = (line: { label: string; amount: number }) => ({ label: redactLabel(line.label), amount: line.amount });
     return NextResponse.json({
-      lines: lines.map((line) => ({ label: redactLabel(line.label), amount: line.amount })),
+      lines: lines.map(clean),
+      details: details.map((detail) => ({ ...detail, name: redactLabel(detail.name), items: detail.items.map(clean) })),
     });
   } catch (error) {
     console.error("extract failed", error);

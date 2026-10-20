@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { isDetailRule, latestRun } from "@/lib/detailChecks";
 import { mostImportant, toFact } from "@/lib/message";
 import { createClient } from "@/lib/supabase/server";
 import { writeMessage } from "@/lib/writeMessage";
@@ -29,8 +30,11 @@ export async function POST(request: Request) {
     .limit(200);
   if (!rows?.length) return NextResponse.json({ error: "Run the checks first." }, { status: 409 });
 
-  // The rows of one run share a created_at; the newest run is the one that counts.
-  const issue = mostImportant(rows.filter((row) => row.created_at === rows[0].created_at));
+  // The newest run counts, plus the detail checks saved when the lines were confirmed.
+  const issue = mostImportant([
+    ...latestRun(rows.filter((row) => !isDetailRule(row.rule))),
+    ...latestRun(rows.filter((row) => isDetailRule(row.rule))),
+  ]);
   if (!issue) return NextResponse.json({ message: null, reason: "Every line checks out." });
 
   const { data: line } = await supabase

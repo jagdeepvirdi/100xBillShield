@@ -42,12 +42,12 @@ type Kind =
 type Classified = CheckLine & { kind: Kind; cents: number };
 
 // Differences up to 5 paise are rounding, not errors.
-const TOLERANCE_CENTS = 5;
+export const TOLERANCE_CENTS = 5;
 const TAX_WORDS = /\b(gst|cgst|sgst|igst|vat|tax|cess)\b/;
 const READINGS = /(\d+(?:\.\d+)?)\s*(?:to|-|–|→)\s*(\d+(?:\.\d+)?)/i;
 const RATE = /@\s*(?:rs\.?|₹)?\s*(\d+(?:\.\d+)?)/i;
 
-const toCents = (n: number) => Math.round(n * 100);
+export const toCents = (n: number) => Math.round(n * 100);
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const close = (a: number, b: number) => Math.abs(a - b) <= TOLERANCE_CENTS;
 

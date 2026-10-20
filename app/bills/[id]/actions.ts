@@ -4,23 +4,41 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runChecks } from "@/lib/checks";
+import { runDetailChecks, type DetailSection } from "@/lib/detailChecks";
 import { redactLabel, redactText } from "@/lib/redact";
 import { wordsChanged } from "@/lib/wordsChanged";
 import { createClient } from "@/lib/supabase/server";
 
+const detailSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  summaryRef: z.number().int().nonnegative().nullable(),
+  items: z.array(z.number().finite()).max(1000),
+  subtotal: z.number().finite().nullable(),
+});
+
 const inputSchema = z.object({
   billId: z.uuid(),
   lines: z
-    .array(z.object({ label: z.string().trim().min(1).max(200), amount: z.number().finite() }))
+    .array(
+      z.object({
+        label: z.string().trim().min(1).max(200),
+        amount: z.number().finite(),
+        ref: z.number().int().nonnegative().nullable(),
+      }),
+    )
     .min(1)
     .max(200),
+  details: z.array(detailSchema).max(50),
 });
 
+// Only the Summary lines become line_item rows. The detailed blocks are checked against them
+// here and saved as check_result rows, so the detail itself is never stored.
 export async function confirmLines(
   billId: string,
-  lines: { label: string; amount: number }[],
+  lines: { label: string; amount: number; ref: number | null }[],
+  details: DetailSection[],
 ): Promise<{ error?: string }> {
-  const parsed = inputSchema.safeParse({ billId, lines });
+  const parsed = inputSchema.safeParse({ billId, lines, details });
   if (!parsed.success) return { error: "Every line needs a label and a number amount." };
 
   const supabase = await createClient();
@@ -38,8 +56,36 @@ export async function confirmLines(
     label: redactLabel(line.label),
     amount: line.amount,
   }));
-  const { error } = await supabase.from("line_item").insert(rows);
-  if (error) return { error: `Could not save the lines: ${error.message}` };
+  const { data: saved, error } = await supabase.from("line_item").insert(rows).select("id, line_no");
+  if (error || !saved) return { error: `Could not save the lines: ${error?.message}` };
+
+  const summary = new Map<number, { id: string; amount: number }>();
+  for (const line of saved) {
+    const source = parsed.data.lines[(line.line_no ?? 0) - 1];
+    if (source.ref !== null && !summary.has(source.ref)) summary.set(source.ref, { id: line.id, amount: source.amount });
+  }
+  const results = runDetailChecks(
+    parsed.data.details.map((d) => ({ ...d, name: redactLabel(d.name) })),
+    summary,
+  );
+
+  if (results.length > 0) {
+    const { error: checkError } = await supabase.from("check_result").insert(
+      results.map((r) => ({
+        bill_id: parsed.data.billId,
+        line_item_id: r.lineId,
+        rule: r.rule,
+        expected: r.expected,
+        actual: r.actual,
+        verdict: r.verdict,
+      })),
+    );
+    if (checkError) {
+      // Undo, so the user can confirm again instead of being stuck with half a bill.
+      await supabase.from("line_item").delete().eq("bill_id", parsed.data.billId);
+      return { error: `Could not save the detail checks: ${checkError.message}` };
+    }
+  }
 
   revalidatePath(`/bills/${parsed.data.billId}`);
   return {};

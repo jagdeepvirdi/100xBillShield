@@ -18,6 +18,7 @@ export type BillViewProps = {
   lines: { id: string; label: string; amount: Money }[];
   promise: { plan_price: Money; tax_included: boolean | null; discount: Money; effective_from: string | null; notes: string | null } | null;
   checks: CheckRow[];
+  detailChecks: CheckRow[];
   histories: LineHistory[];
   message: { id: string; draft: string; sent_text: string | null; sent_at: string | null; words_changed: number | null } | null;
   promiseError?: string;
@@ -58,10 +59,11 @@ function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolea
   return null;
 }
 
-export default function BillView({ bill, lines, promise, checks, histories, message, promiseError, checkError, deleteError }: BillViewProps) {
+export default function BillView({ bill, lines, promise, checks, detailChecks, histories, message, promiseError, checkError, deleteError }: BillViewProps) {
   const labels = new Map(lines.map((line) => [line.id, line.label]));
-  const hasIssues = checks.some((row) => row.verdict !== "ok" && row.line_item_id);
-  const allOk = checks.length > 0 && checks.every((row) => row.verdict === "ok");
+  const shown = [...detailChecks, ...checks];
+  const hasIssues = shown.some((row) => row.verdict !== "ok" && row.line_item_id);
+  const allOk = checks.length > 0 && shown.every((row) => row.verdict === "ok");
   const step = nextStep({ hasLines: lines.length > 0, hasPromise: Boolean(promise), hasChecks: checks.length > 0, allOk, hasIssues, message });
 
   return (
@@ -174,8 +176,8 @@ export default function BillView({ bill, lines, promise, checks, histories, mess
         <section>
           <h2>Checks</h2>
           {checkError && <p role="alert">{checkError}</p>}
-          {allOk && <CleanBill rows={checks} labels={labels} />}
-          {checks.length > 0 && !allOk && <CheckResults rows={checks} labels={labels} />}
+          {allOk && <CleanBill rows={shown} labels={labels} />}
+          {shown.length > 0 && !allOk && <CheckResults rows={shown} labels={labels} />}
           <form action={runBillChecks}>
             <input type="hidden" name="bill_id" value={bill.id} />
             <button type="submit" className={checks.length > 0 ? "secondary" : undefined}>

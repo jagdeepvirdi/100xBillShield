@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { isDetailRule, latestRun } from "@/lib/detailChecks";
 import { lineHistories } from "@/lib/history";
 import { createClient } from "@/lib/supabase/server";
 import BillView from "./BillView";
@@ -40,13 +41,15 @@ export default async function BillPage({
     .maybeSingle();
 
   // Every run is kept; the rows of one run share a created_at, so the newest run is the first group.
+  // Detail checks are saved once when the lines are confirmed, so they are kept apart from the runs.
   const { data: checkRows } = await supabase
     .from("check_result")
     .select("id, rule, expected, actual, verdict, line_item_id, created_at")
     .eq("bill_id", id)
     .order("created_at", { ascending: false })
     .limit(200);
-  const latestChecks = checkRows?.filter((row) => row.created_at === checkRows[0].created_at) ?? [];
+  const latestChecks = latestRun((checkRows ?? []).filter((row) => !isDetailRule(row.rule)));
+  const detailChecks = latestRun((checkRows ?? []).filter((row) => isDetailRule(row.rule)));
 
   const histories = lineHistories(
     (lines ?? []).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })),
@@ -67,6 +70,7 @@ export default async function BillPage({
       lines={lines ?? []}
       promise={promise}
       checks={latestChecks}
+      detailChecks={detailChecks}
       histories={histories}
       message={message}
       promiseError={promise_error}
