@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runDetailChecks, type DetailSection } from "./detailChecks";
+import { refreshRollups, runDetailChecks, type DetailSection } from "./detailChecks";
 
 const summary = new Map([
   [0, { id: "monthly", amount: 499 }],
@@ -45,5 +45,39 @@ describe("detail checks", () => {
 
   it("skips a block with nothing to check", () => {
     expect(runDetailChecks([{ name: "Empty", summaryRef: 0, items: [], subtotal: null }], summary)).toEqual([]);
+  });
+});
+
+describe("refreshing roll-ups after a Summary line is edited", () => {
+  const addons: DetailSection = { name: "Add-ons", summaryRef: 2, items: [100, 30], subtotal: 130 };
+  const stored = runDetailChecks([addons], summary).map((r) => ({
+    rule: r.rule,
+    expected: r.expected,
+    actual: r.actual,
+    verdict: r.verdict,
+    line_item_id: r.lineId,
+  }));
+
+  it("turns a wrong roll-up ok once the line is corrected", () => {
+    expect(stored[1].verdict).toBe("wrong");
+    const { rows, changed } = refreshRollups(stored, new Map([["addons", 130]]));
+    expect(changed).toBe(true);
+    expect(rows[1]).toMatchObject({ verdict: "ok", actual: 130 });
+    expect(rows[0]).toEqual(stored[0]);
+  });
+
+  it("changes nothing when the amount did not move", () => {
+    expect(refreshRollups(stored, new Map([["addons", 120]])).changed).toBe(false);
+  });
+
+  it("makes an ok roll-up wrong when the line is edited away from the block total", () => {
+    const ok = runDetailChecks([{ ...addons, items: [90, 30], subtotal: 120 }], summary).map((r) => ({
+      rule: r.rule,
+      expected: r.expected,
+      actual: r.actual,
+      verdict: r.verdict,
+      line_item_id: r.lineId,
+    }));
+    expect(refreshRollups(ok, new Map([["addons", 150]])).rows[1].verdict).toBe("wrong");
   });
 });

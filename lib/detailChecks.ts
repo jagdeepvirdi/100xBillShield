@@ -5,6 +5,7 @@ import { TOLERANCE_CENTS, toCents, type CheckResult } from "./checks";
 
 export const DETAIL_PREFIX = "Detail: ";
 export const isDetailRule = (rule: string) => rule.startsWith(DETAIL_PREFIX);
+const ROLLUP_END = ": total matches the Summary line";
 
 // summaryRef points at the Summary line this block explains; null when none matches.
 export type DetailSection = { name: string; summaryRef: number | null; items: number[]; subtotal: number | null };
@@ -38,7 +39,7 @@ export function runDetailChecks(sections: DetailSection[], summary: Map<number, 
       results.push(judge(`${DETAIL_PREFIX}${name}: items add up to the printed subtotal`, itemsCents, basis, parent?.id));
     }
     if (parent) {
-      results.push(judge(`${DETAIL_PREFIX}${name}: total matches the Summary line`, basis, toCents(parent.amount), parent.id));
+      results.push(judge(`${DETAIL_PREFIX}${name}${ROLLUP_END}`, basis, toCents(parent.amount), parent.id));
     }
     return results;
   });
@@ -47,4 +48,21 @@ export function runDetailChecks(sections: DetailSection[], summary: Map<number, 
 // The rows of one run share a created_at; the newest run is the first group.
 export function latestRun<T extends { created_at: string }>(rows: T[]): T[] {
   return rows.filter((row) => row.created_at === rows[0].created_at);
+}
+
+type StoredRow = { rule: string; expected: number | string | null; actual: number | string | null; verdict: string; line_item_id: string | null };
+
+// The detail items are not stored, so after a Summary line is edited its roll-up check is recomputed from what
+// was saved: the block's total (expected) against the line's new amount. Other detail rows are left as they are.
+export function refreshRollups<T extends StoredRow>(rows: T[], amounts: Map<string, number>): { rows: T[]; changed: boolean } {
+  let changed = false;
+  const refreshed = rows.map((row) => {
+    const amount = row.line_item_id ? amounts.get(row.line_item_id) : undefined;
+    if (!row.rule.endsWith(ROLLUP_END) || amount === undefined || row.expected === null) return row;
+    const [expected, actual] = [toCents(Number(row.expected)), toCents(amount)];
+    if (row.actual !== null && toCents(Number(row.actual)) === actual) return row;
+    changed = true;
+    return { ...row, actual: actual / 100, verdict: Math.abs(expected - actual) <= TOLERANCE_CENTS ? "ok" : "wrong" };
+  });
+  return { rows: refreshed, changed };
 }

@@ -11,6 +11,7 @@ import CheckResults from "./CheckResults";
 import CleanBill from "./CleanBill";
 import DeleteBill from "./DeleteBill";
 import EditBill from "./EditBill";
+import EditLines from "./EditLines";
 import EarlierBills from "./EarlierBills";
 import LinesEditor from "./LinesEditor";
 import MessageBox from "./MessageBox";
@@ -135,6 +136,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
               </tbody>
             </table>
           </div>
+          <EditLines key={lines.map((l) => `${l.id}:${l.amount}:${l.label}`).join()} billId={bill.id} lines={lines} />
         </section>
       ) : (
         <LinesEditor bill={bill} />

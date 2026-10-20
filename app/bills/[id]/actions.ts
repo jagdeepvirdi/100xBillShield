@@ -7,7 +7,7 @@ import { ANSWER_DISPUTE, ANSWER_EXPECTED } from "@/lib/answers";
 import { billInfoSchema } from "@/lib/billInfo";
 import { runChecks } from "@/lib/checks";
 import { isOneOff } from "@/lib/billTypes";
-import { runDetailChecks, type DetailSection } from "@/lib/detailChecks";
+import { DETAIL_PREFIX, latestRun, refreshRollups, runDetailChecks, type DetailSection } from "@/lib/detailChecks";
 import { redactLabel, redactText } from "@/lib/redact";
 import { wordsChanged } from "@/lib/wordsChanged";
 import { createClient } from "@/lib/supabase/server";
@@ -128,6 +128,108 @@ export async function updateBill(formData: FormData) {
   revalidatePath("/bills");
   revalidatePath(`/bills/${billId}`);
   redirect(`/bills/${billId}`);
+}
+
+const editSchema = z.object({
+  billId: z.uuid(),
+  lines: z
+    .array(z.object({ id: z.uuid().nullable(), label: z.string().trim().min(1).max(200), amount: z.number().finite() }))
+    .min(1)
+    .max(200),
+});
+
+// Corrects the confirmed lines. Lines that stay keep their id, so earlier checks and messages stay linked to them;
+// the checks then run again and add a new run (earlier runs are kept).
+export async function saveLines(
+  billId: string,
+  lines: { id: string | null; label: string; amount: number }[],
+): Promise<{ error?: string }> {
+  const parsed = editSchema.safeParse({ billId, lines });
+  if (!parsed.success) return { error: "Every line needs a label and a number amount." };
+  const supabase = await createClient();
+
+  const { data: current } = await supabase.from("line_item").select("id, label").eq("bill_id", billId);
+  if (!current?.length) return { error: "Confirm the bill lines first." };
+
+  const ids = parsed.data.lines.flatMap((line) => (line.id ? [line.id] : []));
+  const known = new Set(current.map((line) => line.id));
+  if (ids.some((id) => !known.has(id)) || new Set(ids).size !== ids.length) {
+    return { error: "These lines changed in the meantime. Reload the page and try again." };
+  }
+
+  const removed = current.filter((line) => !ids.includes(line.id));
+  if (removed.length > 0) {
+    // Removing a line also removes the checks and messages about it, so a message already sent keeps its line.
+    const { data: sent } = await supabase
+      .from("message")
+      .select("line_item_id")
+      .eq("bill_id", billId)
+      .not("sent_at", "is", null)
+      .in("line_item_id", removed.map((line) => line.id));
+    if (sent?.length) {
+      const label = removed.find((line) => line.id === sent[0].line_item_id)?.label;
+      return { error: `You sent a message about "${label}", so that line has to stay.` };
+    }
+    const { error } = await supabase.from("line_item").delete().in("id", removed.map((line) => line.id));
+    if (error) return { error: `Could not remove the lines: ${error.message}` };
+  }
+
+  const rows = parsed.data.lines.map((line, index) => ({
+    id: line.id,
+    line_no: index + 1,
+    label: redactLabel(line.label),
+    amount: line.amount,
+  }));
+  const updates = await Promise.all(
+    rows
+      .filter((row) => row.id)
+      .map((row) =>
+        supabase.from("line_item").update({ line_no: row.line_no, label: row.label, amount: row.amount }).eq("id", row.id!),
+      ),
+  );
+  const failed = updates.find((update) => update.error);
+  if (failed?.error) return { error: `Could not save the lines: ${failed.error.message}` };
+
+  const added = rows.filter((row) => !row.id).map((row) => ({ bill_id: billId, line_no: row.line_no, label: row.label, amount: row.amount }));
+  if (added.length > 0) {
+    const { error } = await supabase.from("line_item").insert(added);
+    if (error) return { error: `Could not add the lines: ${error.message}` };
+  }
+
+  await refreshDetailRollups(supabase, billId);
+  await insertChecks(supabase, billId);
+
+  revalidatePath("/bills");
+  revalidatePath(`/bills/${billId}`);
+  return {};
+}
+
+// The detail results were worked out against the old amounts, so they are re-saved against the corrected ones.
+async function refreshDetailRollups(supabase: Supabase, billId: string) {
+  const { data: stored } = await supabase
+    .from("check_result")
+    .select("rule, expected, actual, verdict, line_item_id, created_at")
+    .eq("bill_id", billId)
+    .like("rule", `${DETAIL_PREFIX}%`)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  const detail = latestRun(stored ?? []);
+  if (detail.length === 0) return;
+
+  const { data: lines } = await supabase.from("line_item").select("id, amount").eq("bill_id", billId);
+  const { rows, changed } = refreshRollups(detail, new Map((lines ?? []).map((line) => [line.id, Number(line.amount)])));
+  if (!changed) return;
+
+  await supabase.from("check_result").insert(
+    rows.map((row) => ({
+      bill_id: billId,
+      line_item_id: row.line_item_id,
+      rule: row.rule,
+      expected: row.expected,
+      actual: row.actual,
+      verdict: row.verdict,
+    })),
+  );
 }
 
 const optionalNumber = z
