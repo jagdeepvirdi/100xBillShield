@@ -1,17 +1,40 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --bg: #f4f6f5;
+  --surface: #ffffff;
+  --text: #15191c;
+  --muted: #566066;
+  --line: #d7dedb;
+  --brand: #0b5d56;
+  --on-brand: #ffffff;
+  --flag: #b3261e;
+  --flag-bg: #fdecea;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+    --bg: #0f1315;
+    --surface: #171c1f;
+    --text: #e8eeec;
+    --muted: #9aa6a3;
+    --line: #2a3236;
+    --brand: #46bfae;
+    --on-brand: #06201d;
+    --flag: #ff8a80;
+    --flag-bg: #2b1715;
   }
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 html {
   height: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -24,26 +47,158 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), var(--font-geist-sans), system-ui, sans-serif;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.35rem;
+}
+
+h3 {
+  font-size: 1.05rem;
 }
 
 a {
   color: inherit;
-  text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+:focus-visible {
+  outline: 3px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* App pages (login, signup, bills): a plain, readable column. The landing page opts out by not using <main>. */
+main {
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+main > * + * {
+  margin-top: 1rem;
+}
+
+main section {
+  margin-top: 2.25rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}
+
+main section > * + * {
+  margin-top: 0.85rem;
+}
+
+main a {
+  color: var(--brand);
+  text-underline-offset: 3px;
+}
+
+main label {
+  color: var(--muted);
+}
+
+main form > * + * {
+  margin-top: 0.9rem;
+}
+
+main form label {
+  display: grid;
+  gap: 0.3rem;
+  max-width: 26rem;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  max-width: 100%;
+}
+
+textarea {
+  width: 100%;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--on-brand);
+  background: var(--brand);
+  border: 0;
+  border-radius: 8px;
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.85rem 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+pre {
+  font: inherit;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+}
+
+[role="alert"] {
+  color: var(--flag);
+  background: var(--flag-bg);
+  border-left: 4px solid var(--flag);
+  border-radius: 4px;
+  padding: 0.6rem 0.85rem;
+}
+
+ul,
+ol {
+  padding-left: 1.25rem;
 }
