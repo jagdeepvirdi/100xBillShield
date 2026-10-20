@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { billInfoSchema } from "@/lib/billInfo";
 import { runChecks } from "@/lib/checks";
 import { runDetailChecks, type DetailSection } from "@/lib/detailChecks";
 import { redactLabel, redactText } from "@/lib/redact";
@@ -29,17 +30,21 @@ const inputSchema = z.object({
     .min(1)
     .max(200),
   details: z.array(detailSchema).max(50),
+  info: billInfoSchema,
 });
 
+// The bill's type, company and date as the user confirmed them; a bill the user already filled in is not
+// overwritten by the reader, because the confirm screen starts from the saved values.
 // Only the Summary lines become line_item rows. The detailed blocks are checked against them
 // here and saved as check_result rows, so the detail itself is never stored.
 export async function confirmLines(
   billId: string,
   lines: { label: string; amount: number; ref: number | null }[],
   details: DetailSection[],
+  info: Record<string, string>,
 ): Promise<{ error?: string }> {
-  const parsed = inputSchema.safeParse({ billId, lines, details });
-  if (!parsed.success) return { error: "Every line needs a label and a number amount." };
+  const parsed = inputSchema.safeParse({ billId, lines, details, info });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Every line needs a label and a number amount." };
 
   const supabase = await createClient();
 
@@ -49,6 +54,9 @@ export async function confirmLines(
     .select("id", { count: "exact", head: true })
     .eq("bill_id", parsed.data.billId);
   if (count) return { error: "This bill's lines are already confirmed." };
+
+  const { error: infoError } = await supabase.from("bill").update(parsed.data.info).eq("id", parsed.data.billId);
+  if (infoError) return { error: `Could not save the bill details: ${infoError.message}` };
 
   const rows = parsed.data.lines.map((line, index) => ({
     bill_id: parsed.data.billId,
@@ -89,6 +97,32 @@ export async function confirmLines(
 
   revalidatePath(`/bills/${parsed.data.billId}`);
   return {};
+}
+
+function failEdit(billId: string, message: string): never {
+  redirect(`/bills/${billId}?edit_error=${encodeURIComponent(message)}`);
+}
+
+export async function updateBill(formData: FormData) {
+  const billId = String(formData.get("bill_id") ?? "");
+  if (!z.uuid().safeParse(billId).success) redirect("/bills");
+
+  const parsed = billInfoSchema.safeParse({
+    bill_type: formData.get("bill_type"),
+    provider: formData.get("provider") ?? "",
+    period_start: formData.get("period_start") ?? "",
+    period_end: formData.get("period_end") ?? "",
+  });
+  if (!parsed.success) failEdit(billId, parsed.error.issues[0]?.message ?? "Check the details.");
+
+  const supabase = await createClient();
+  // RLS rejects the update if the bill is not the caller's.
+  const { error } = await supabase.from("bill").update(parsed.data).eq("id", billId);
+  if (error) failEdit(billId, `Could not save the details: ${error.message}`);
+
+  revalidatePath("/bills");
+  revalidatePath(`/bills/${billId}`);
+  redirect(`/bills/${billId}`);
 }
 
 const optionalNumber = z

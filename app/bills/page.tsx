@@ -44,7 +44,7 @@ export default async function BillsPage() {
             <li key={bill.id}>
               <Link href={`/bills/${bill.id}`} className="row-link">
                 <div>
-                  <div className="title">{bill.provider ?? "Unknown provider"}</div>
+                  <div className="title">{bill.provider ?? "Unnamed bill"}</div>
                   <div className="muted">
                     {periodText(bill.period_start, bill.period_end)}. Added {formatStamp(bill.created_at)}.
                   </div>

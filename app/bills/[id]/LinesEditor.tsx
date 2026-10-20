@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { runDetailChecks, type DetailSection } from "@/lib/detailChecks";
+import BillInfoFields, { type InfoDefaults } from "../BillInfoFields";
 import { confirmLines } from "./actions";
 import { money, verdictClass } from "./checkFormat";
 
@@ -10,8 +11,13 @@ import { money, verdictClass } from "./checkFormat";
 type Row = { label: string; amount: string; ref: number | null };
 type Detail = DetailSection & { itemCount: number };
 
-export default function LinesEditor({ billId }: { billId: string }) {
+type Bill = { id: string; provider: string | null; bill_type: string };
+
+export default function LinesEditor({ bill }: { bill: Bill }) {
+  const billId = bill.id;
   const router = useRouter();
+  const infoForm = useRef<HTMLFormElement>(null);
+  const [info, setInfo] = useState<InfoDefaults | null>(null);
   const [rows, setRows] = useState<Row[] | null>(null);
   const [details, setDetails] = useState<Detail[]>([]);
   const [busy, setBusy] = useState(false);
@@ -28,6 +34,14 @@ export default function LinesEditor({ billId }: { billId: string }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not read the bill.");
+      // What the user already entered at upload wins; the reader fills in the rest. "other" is the placeholder type.
+      const read = data.info as { billType: string | null; provider: string | null; periodStart: string | null; periodEnd: string | null };
+      setInfo({
+        bill_type: bill.bill_type !== "other" ? bill.bill_type : (read.billType ?? "other"),
+        provider: bill.provider ?? read.provider,
+        period_start: read.periodStart,
+        period_end: read.periodEnd,
+      });
       setRows(
         data.lines.map((l: { label: string; amount: number }, i: number) => ({ label: l.label, amount: String(l.amount), ref: i })),
       );
@@ -60,7 +74,11 @@ export default function LinesEditor({ billId }: { billId: string }) {
     }
     setBusy(true);
     setError(null);
-    const result = await confirmLines(billId, lines, details);
+    const fields = new FormData(infoForm.current!);
+    const chosen = Object.fromEntries(
+      ["bill_type", "provider", "period_start", "period_end"].map((name) => [name, String(fields.get(name) ?? "")]),
+    );
+    const result = await confirmLines(billId, lines, details, chosen);
     setBusy(false);
     if (result.error) setError(result.error);
     else router.refresh();
@@ -86,9 +104,13 @@ export default function LinesEditor({ billId }: { billId: string }) {
 
   return (
     <section>
-      <h2>Check the lines</h2>
-      <p>These are the Summary lines of the bill. Fix anything the reader got wrong, then confirm.</p>
+      <h2>Check what was read</h2>
+      <p>BillShield read these from the bill. Fix anything it got wrong, then confirm.</p>
       {error && <p role="alert">{error}</p>}
+      <form ref={infoForm} className="form-grid" onSubmit={(event) => event.preventDefault()}>
+        <BillInfoFields defaults={info!} />
+      </form>
+      <h3>Summary lines</h3>
       <div className="table-wrap">
         <table>
           <thead>

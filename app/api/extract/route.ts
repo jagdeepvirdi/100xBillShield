@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readBill } from "@/lib/extract";
-import { redactLabel } from "@/lib/redact";
+import { redactLabel, redactText } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 
 const bodySchema = z.object({ billId: z.uuid() });
@@ -32,9 +32,10 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { lines, details } = await readBill(signed.signedUrl, bill.image_link);
+    const { info, lines, details } = await readBill(signed.signedUrl, bill.image_link);
     const clean = (line: { label: string; amount: number }) => ({ label: redactLabel(line.label), amount: line.amount });
     return NextResponse.json({
+      info: { ...info, provider: info.provider ? redactText(info.provider) || null : null },
       lines: lines.map(clean),
       details: details.map((detail) => ({ ...detail, name: redactLabel(detail.name), items: detail.items.map(clean) })),
     });

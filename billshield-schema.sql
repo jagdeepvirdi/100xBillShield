@@ -15,7 +15,7 @@ create table public.bill (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null default auth.uid() references auth.users(id) on delete cascade,
   provider     text,
-  bill_type    text not null check (bill_type in ('lpg','electricity','broadband','phone','other')),
+  bill_type    text not null check (bill_type in ('lpg','electricity','broadband','phone','restaurant','shopping','receipt','other')),
   period_start date,
   period_end   date,
   image_link   text,                 -- storage path of the masked photo, not the bytes

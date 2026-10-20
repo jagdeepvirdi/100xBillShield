@@ -3,6 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { BILL_TYPES } from "@/lib/billTypes";
+import { redactText } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 
 // Vercel rejects request bodies over 4.5 MB, and the file travels through this server action.
@@ -14,14 +16,11 @@ const EXTENSIONS: Record<string, string> = {
   "application/pdf": "pdf",
 };
 
-const optionalText = z.string().trim().transform((v) => v || null);
-const optionalDate = z.union([z.literal("").transform(() => null), z.iso.date()]);
 
+// "auto" means the reader picks the type; until it has read the bill the row is stored as "other".
 const billSchema = z.object({
-  bill_type: z.enum(["lpg", "electricity", "broadband", "phone", "other"]),
-  provider: optionalText,
-  period_start: optionalDate,
-  period_end: optionalDate,
+  bill_type: z.enum(["auto", ...BILL_TYPES]).transform((v) => (v === "auto" ? "other" : v)),
+  provider: z.string().trim().max(120).transform((v) => redactText(v) || null),
 });
 
 function fail(message: string): never {
@@ -32,14 +31,9 @@ export async function uploadBill(formData: FormData) {
   const parsed = billSchema.safeParse({
     bill_type: formData.get("bill_type"),
     provider: formData.get("provider") ?? "",
-    period_start: formData.get("period_start") ?? "",
-    period_end: formData.get("period_end") ?? "",
   });
-  if (!parsed.success) fail("Check the bill type and dates.");
-  const { bill_type, provider, period_start, period_end } = parsed.data;
-  if (period_start && period_end && period_end < period_start) {
-    fail("Period end is before period start.");
-  }
+  if (!parsed.success) fail("Check the bill type and company name.");
+  const { bill_type, provider } = parsed.data;
 
   const photo = formData.get("photo");
   if (!(photo instanceof File) || photo.size === 0) fail("Choose a photo or PDF of the bill.");
@@ -61,7 +55,7 @@ export async function uploadBill(formData: FormData) {
 
   const { error: insertError } = await supabase
     .from("bill")
-    .insert({ bill_type, provider, period_start, period_end, image_link: path });
+    .insert({ bill_type, provider, image_link: path });
   if (insertError) {
     // Do not leave an orphan photo behind.
     await supabase.storage.from("bill-images").remove([path]);

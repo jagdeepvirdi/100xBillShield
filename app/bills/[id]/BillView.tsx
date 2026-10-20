@@ -6,6 +6,7 @@ import type { CheckRow } from "./checkFormat";
 import CheckResults from "./CheckResults";
 import CleanBill from "./CleanBill";
 import DeleteBill from "./DeleteBill";
+import EditBill from "./EditBill";
 import EarlierBills from "./EarlierBills";
 import LinesEditor from "./LinesEditor";
 import MessageBox from "./MessageBox";
@@ -24,6 +25,7 @@ export type BillViewProps = {
   promiseError?: string;
   checkError?: string;
   deleteError?: string;
+  editError?: string;
 };
 
 function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolean; allOk: boolean; hasIssues: boolean; message: BillViewProps["message"] }) {
@@ -59,7 +61,7 @@ function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolea
   return null;
 }
 
-export default function BillView({ bill, lines, promise, checks, detailChecks, histories, message, promiseError, checkError, deleteError }: BillViewProps) {
+export default function BillView({ bill, lines, promise, checks, detailChecks, histories, message, promiseError, checkError, deleteError, editError }: BillViewProps) {
   const labels = new Map(lines.map((line) => [line.id, line.label]));
   const shown = [...detailChecks, ...checks];
   const hasIssues = shown.some((row) => row.verdict !== "ok" && row.line_item_id);
@@ -74,7 +76,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, h
 
       <div className="page-head">
         <div>
-          <h1>{bill.provider ?? "Unknown provider"}</h1>
+          <h1>{bill.provider ?? "Unnamed bill"}</h1>
           <div className="meta">
             <span className="pill">{billTypeLabel(bill.bill_type)}</span>
             <span>{periodText(bill.period_start, bill.period_end)}</span>
@@ -82,6 +84,8 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, h
           </div>
         </div>
       </div>
+
+      <EditBill billId={bill.id} defaults={bill} error={editError} />
 
       {step && (
         <div className={`callout${step.good ? " good" : ""}`}>
@@ -113,7 +117,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, h
           </div>
         </section>
       ) : (
-        <LinesEditor billId={bill.id} />
+        <LinesEditor bill={bill} />
       )}
 
       <section>

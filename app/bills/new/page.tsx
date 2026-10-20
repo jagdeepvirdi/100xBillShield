@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BILL_TYPE_LABELS, BILL_TYPES } from "@/lib/billTypes";
 import { uploadBill } from "./actions";
 
 export default async function NewBillPage({
@@ -17,8 +18,8 @@ export default async function NewBillPage({
         <div>
           <h1>Upload a bill</h1>
           <p className="lede">
-            Take a photo or choose a PDF. Next you will check the lines BillShield reads from it, so nothing is saved
-            until you confirm them.
+            Take a photo or choose a PDF. BillShield reads the type, company, date and lines. You check and correct them
+            before anything is saved.
           </p>
         </div>
       </div>
@@ -28,26 +29,19 @@ export default async function NewBillPage({
       <section>
         <form action={uploadBill} className="form-grid">
           <label>
-            Bill type
-            <select name="bill_type" required>
-              <option value="lpg">LPG</option>
-              <option value="electricity">Electricity</option>
-              <option value="broadband">Broadband</option>
-              <option value="phone">Phone</option>
-              <option value="other">Other</option>
+            Bill type (optional)
+            <select name="bill_type" defaultValue="auto">
+              <option value="auto">Let BillShield choose</option>
+              {BILL_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {BILL_TYPE_LABELS[type]}
+                </option>
+              ))}
             </select>
           </label>
           <label>
-            Provider (optional)
-            <input name="provider" type="text" placeholder="For example, the company name" />
-          </label>
-          <label>
-            Period start (optional)
-            <input name="period_start" type="date" />
-          </label>
-          <label>
-            Period end (optional)
-            <input name="period_end" type="date" />
+            Company or shop (optional)
+            <input name="provider" type="text" placeholder="Read from the bill if you leave it empty" />
           </label>
           <label className="full">
             Photo or PDF (JPG, PNG, WebP or PDF, up to 4 MB)

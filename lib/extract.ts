@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { BILL_TYPES, type BillType } from "@/lib/billTypes";
 import { geminiGenerate, withFallback } from "@/lib/llm";
 
 const lineSchema = z.object({
@@ -7,7 +8,12 @@ const lineSchema = z.object({
   amount: z.number().finite(),
 });
 
+// Anything the model gets wrong or leaves out becomes null; the user can fill it in on the confirm screen.
 const billSchema = z.object({
+  bill_type: z.enum(BILL_TYPES).nullable().catch(null),
+  provider: z.string().trim().min(1).nullable().catch(null),
+  period_start: z.iso.date().nullable().catch(null),
+  period_end: z.iso.date().nullable().catch(null),
   summary: z.array(lineSchema),
   details: z
     .array(
@@ -23,9 +29,17 @@ const billSchema = z.object({
 
 export type ExtractedLine = z.infer<typeof lineSchema>;
 export type ExtractedDetail = { name: string; summaryIndex: number | null; items: ExtractedLine[]; subtotal: number | null };
-export type ExtractedBill = { lines: ExtractedLine[]; details: ExtractedDetail[] };
+export type ExtractedInfo = { billType: BillType | null; provider: string | null; periodStart: string | null; periodEnd: string | null };
+export type ExtractedBill = { info: ExtractedInfo; lines: ExtractedLine[]; details: ExtractedDetail[] };
 
-const PROMPT = `You are reading a bill. Many bills have a SUMMARY (what the customer is actually charged: plan or monthly charge, add-ons, usage charge, discounts, taxes, rounding, total, amount due) and then DETAILED pages (itemised usage, call or data records, add-on breakdowns) that explain parts of the summary.
+const PROMPT = `You are reading a bill or receipt. First work out what it is, then read its lines.
+
+About the bill:
+- bill_type: one of ${BILL_TYPES.map((t) => `"${t}"`).join(", ")}. Use "restaurant" for food and drink bills, "shopping" for shop or online purchases, "receipt" for any other one-off purchase, and "other" only when nothing else fits. Use null if you cannot tell.
+- provider: the name of the company, shop or restaurant that issued it, as printed (no address, no phone number). null if not printed.
+- period_start and period_end: the billing period as YYYY-MM-DD. For a one-off purchase put the bill date in both. null if no date is printed.
+
+About the lines: many bills have a SUMMARY (what the customer is actually charged: plan or monthly charge, add-ons, usage charge, discounts, taxes, rounding, total, amount due) and then DETAILED pages (itemised usage, call or data records, add-on breakdowns) that explain parts of the summary.
 
 1. Find the summary. Put its lines in "summary", exactly as printed, in order.
 2. Do NOT copy detailed pages into "summary". For each detailed block, add one entry to "details":
@@ -39,9 +53,9 @@ Rules:
 - Copy each amount exactly as printed. Do not add, subtract, convert or correct anything.
 - Use a negative amount for discounts, credits and subsidies.
 - Leave out account numbers, customer or consumer ids, phone numbers and addresses.
-- If the file is not a bill or nothing is readable, reply with {"summary": [], "details": []}.
+- If the file is not a bill or nothing is readable, reply with {"bill_type": null, "provider": null, "period_start": null, "period_end": null, "summary": [], "details": []}.
 Reply with ONLY JSON, no prose and no code fences:
-{"summary":[{"label":string,"amount":number}],"details":[{"name":string,"summary_index":number|null,"items":[{"label":string,"amount":number}],"subtotal":number|null}]}`;
+{"bill_type":string|null,"provider":string|null,"period_start":string|null,"period_end":string|null,"summary":[{"label":string,"amount":number}],"details":[{"name":string,"summary_index":number|null,"items":[{"label":string,"amount":number}],"subtotal":number|null}]}`;
 
 const MIME_TYPES: Record<string, string> = {
   jpg: "image/jpeg",
@@ -55,7 +69,14 @@ function parseBill(text: string): ExtractedBill {
   const raw = JSON.parse(json);
   // An older-style flat list is treated as a bill with only a summary.
   const bill = billSchema.parse(Array.isArray(raw) ? { summary: raw } : raw);
+  const datesOk = !(bill.period_start && bill.period_end && bill.period_end < bill.period_start);
   return {
+    info: {
+      billType: bill.bill_type,
+      provider: bill.provider,
+      periodStart: datesOk ? bill.period_start : null,
+      periodEnd: datesOk ? bill.period_end : null,
+    },
     lines: bill.summary,
     details: bill.details.map((d) => ({
       name: d.name,
