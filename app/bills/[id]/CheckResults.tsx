@@ -1,21 +1,6 @@
-type Row = {
-  id: string;
-  rule: string;
-  expected: number | string | null;
-  actual: number | string | null;
-  verdict: string;
-  line_item_id: string | null;
-};
+import { difference, money, type CheckRow } from "./checkFormat";
 
-const money = (value: number | string | null) => (value === null ? "-" : Number(value).toFixed(2));
-
-// The difference is computed here in code, never by the model.
-function difference(row: Row) {
-  if (row.expected === null || row.actual === null) return "-";
-  return (Number(row.actual) - Number(row.expected)).toFixed(2);
-}
-
-export default function CheckResults({ rows, labels }: { rows: Row[]; labels: Map<string, string> }) {
+export default function CheckResults({ rows, labels }: { rows: CheckRow[]; labels: Map<string, string> }) {
   return (
     <table>
       <thead>

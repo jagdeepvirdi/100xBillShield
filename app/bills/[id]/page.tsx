@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { runBillChecks, savePromise } from "./actions";
 import CheckResults from "./CheckResults";
+import CleanBill from "./CleanBill";
 import LinesEditor from "./LinesEditor";
 import MessageBox from "./MessageBox";
 
@@ -51,6 +52,7 @@ export default async function BillPage({
   const latestChecks = checkRows?.filter((row) => row.created_at === checkRows[0].created_at) ?? [];
   const lineLabels = new Map((lines ?? []).map((line) => [line.id, line.label]));
   const hasIssues = latestChecks.some((row) => row.verdict !== "ok" && row.line_item_id);
+  const allOk = latestChecks.length > 0 && latestChecks.every((row) => row.verdict === "ok");
 
   const { data: latestMessage } = await supabase
     .from("message")
@@ -93,7 +95,8 @@ export default async function BillPage({
         <section>
           <h2>Checks</h2>
           {check_error && <p role="alert">{check_error}</p>}
-          {latestChecks.length > 0 && <CheckResults rows={latestChecks} labels={lineLabels} />}
+          {allOk && <CleanBill rows={latestChecks} labels={lineLabels} />}
+          {latestChecks.length > 0 && !allOk && <CheckResults rows={latestChecks} labels={lineLabels} />}
           <form action={runBillChecks}>
             <input type="hidden" name="bill_id" value={bill.id} />
             <button type="submit">{latestChecks.length > 0 ? "Run the checks again" : "Run the checks"}</button>
@@ -102,10 +105,10 @@ export default async function BillPage({
         </section>
       )}
 
-      {(hasIssues || latestMessage) && (
+      {hasIssues && (
         <section>
           <h2>Message to the company</h2>
-          {hasIssues && <MessageBox billId={bill.id} />}
+          <MessageBox billId={bill.id} />
           {latestMessage && <pre style={{ whiteSpace: "pre-wrap" }}>{latestMessage.draft}</pre>}
         </section>
       )}
