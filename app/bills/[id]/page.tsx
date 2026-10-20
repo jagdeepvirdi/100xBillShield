@@ -30,14 +30,14 @@ export default async function BillPage({
 
   const { data: lines } = await supabase
     .from("line_item")
-    .select("id, label, amount")
+    .select("id, label, amount, units, rate")
     .eq("bill_id", id)
     .order("line_no");
 
   // Promises are never overwritten; the newest one is the one in force.
   const { data: promise } = await supabase
     .from("promise")
-    .select("plan_price, tax_included, discount, effective_from, notes")
+    .select("plan_price, tax_included, discount, unit_rate, fixed_charge, effective_from, notes")
     .eq("bill_id", id)
     .order("created_at", { ascending: false })
     .limit(1)

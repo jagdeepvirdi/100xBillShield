@@ -29,6 +29,8 @@ create table public.promise (
   plan_price     numeric(12,2),
   tax_included   boolean,
   discount       numeric(12,2),
+  unit_rate      numeric(12,4),     -- tariff per unit (electricity, water)
+  fixed_charge   numeric(12,2),
   effective_from date,
   notes          text,
   created_at     timestamptz not null default now()
@@ -41,6 +43,8 @@ create table public.line_item (
   line_no    int,
   label      text not null,
   amount     numeric(12,2) not null,
+  units      numeric(14,3),         -- as printed, when the line has units and a rate
+  rate       numeric(12,4),
   created_at timestamptz not null default now()
 );
 

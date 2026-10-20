@@ -215,3 +215,57 @@ describe("a total printed more than once", () => {
     expect(sumCheck(lines)).toMatchObject({ expected: 137, actual: 150, verdict: "wrong" });
   });
 });
+
+describe("electricity: rates", () => {
+  const run = (lines: CheckLine[], promise: Partial<CheckPromise> | null = null) =>
+    runChecks({
+      lines,
+      promise: promise && { planPrice: null, taxIncluded: null, discountPct: null, effectiveFrom: null, ...promise },
+      previousLines: null,
+      periodEnd: null,
+    });
+  const energy = (amount: number): CheckLine => ({ label: "Energy charges", amount, units: 150, rate: 7.5 });
+
+  it("passes units times rate and fails a charge that does not match", () => {
+    expect(find(run([energy(1125)]), "Units times")).toMatchObject({ expected: 1125, actual: 1125, verdict: "ok" });
+    expect(find(run([energy(1200)]), "Units times")).toMatchObject({ expected: 1125, actual: 1200, verdict: "wrong" });
+  });
+
+  it("compares a single printed rate with the tariff the user was promised", () => {
+    expect(find(run([energy(1125)], { unitRate: 7.5 }), "Printed rate")).toMatchObject({ verdict: "ok" });
+    expect(find(run([energy(1125)], { unitRate: 6.5 }), "Printed rate")).toMatchObject({ expected: 6.5, actual: 7.5, verdict: "wrong" });
+  });
+
+  it("does not compare slabs with a single tariff", () => {
+    const slabs: CheckLine[] = [
+      { label: "Energy 0-100", amount: 400, units: 100, rate: 4 },
+      { label: "Energy 100-150", amount: 300, units: 50, rate: 6 },
+    ];
+    expect(find(run(slabs, { unitRate: 4 }), "Printed rate")).toBeUndefined();
+  });
+
+  it("compares the fixed charge when exactly one line is a fixed charge", () => {
+    const lines = [energy(1125), line("Fixed charges", 120)];
+    expect(find(run(lines, { fixedCharge: 100 }), "Fixed charge")).toMatchObject({ expected: 100, actual: 120, verdict: "wrong" });
+  });
+
+  it("still checks the maths when the promise has no plan price", () => {
+    const lines = [energy(1125), line("Total amount due", 1125)];
+    expect(find(run(lines, { unitRate: 7.5 }), "Sum of the lines")).toMatchObject({ verdict: "ok" });
+  });
+});
+
+describe("one-off bills", () => {
+  const bill = [line("Tikka", 180), line("Service Charge", 18), line("CGST 2.5%", 4.95), line("SGST 2.5%", 4.95), line("Total amount due", 207.9)];
+  const run = (quote: number | null) => runChecks({ lines: bill, promise: null, previousLines: null, periodEnd: null, oneOff: true, quote });
+
+  it("asks about an extra fee instead of comparing with an earlier bill", () => {
+    expect(find(run(null), "Extra fee")).toMatchObject({ verdict: "unexplained", actual: 18 });
+    expect(find(run(null), "New line")).toBeUndefined();
+  });
+
+  it("compares the billed total with the quote", () => {
+    expect(find(run(207.9), "Billed total")).toMatchObject({ verdict: "ok" });
+    expect(find(run(190), "Billed total")).toMatchObject({ expected: 190, actual: 207.9, verdict: "wrong" });
+  });
+});

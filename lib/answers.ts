@@ -48,7 +48,10 @@ export function resolveChecks<T extends ResultRow>(rows: T[], answerRows: Answer
 const fmt = (value: Money) => Number(value).toFixed(2);
 
 // The question is built by code from the check's own numbers; no model is involved.
-export function questionFor(row: { expected: Money; actual: Money }, label: string): string {
+export function questionFor(row: { rule?: string; expected: Money; actual: Money }, label: string): string {
+  if (row.rule === "Extra fee on a one-off bill" && row.actual !== null) {
+    return `"${label}" (${fmt(row.actual)}) is an extra fee on this bill. Did you agree to it or expect it?`;
+  }
   if (row.expected === null && row.actual !== null) {
     return `"${label}" is a new charge of ${fmt(row.actual)}. It was not on your previous bill. Were you expecting it?`;
   }

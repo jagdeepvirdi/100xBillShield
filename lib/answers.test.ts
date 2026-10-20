@@ -53,3 +53,11 @@ describe("questions", () => {
     );
   });
 });
+
+describe("fee questions", () => {
+  it("asks whether the user agreed to an extra fee", () => {
+    expect(questionFor({ rule: "Extra fee on a one-off bill", expected: null, actual: 20 }, "Service charge")).toBe(
+      '"Service charge" (20.00) is an extra fee on this bill. Did you agree to it or expect it?',
+    );
+  });
+});

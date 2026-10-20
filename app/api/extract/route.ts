@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
   try {
     const { info, lines, details } = await readBill(signed.signedUrl, bill.image_link);
-    const clean = (line: { label: string; amount: number }) => ({ label: redactLabel(line.label), amount: line.amount });
+    const clean = <T extends { label: string }>(line: T) => ({ ...line, label: redactLabel(line.label) });
     return NextResponse.json({
       info: { ...info, provider: info.provider ? redactText(info.provider) || null : null },
       lines: lines.map(clean),

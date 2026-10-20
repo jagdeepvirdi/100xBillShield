@@ -2,13 +2,14 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { parseOptionalNumber } from "@/lib/rates";
 import { runDetailChecks, type DetailSection } from "@/lib/detailChecks";
 import BillInfoFields, { type InfoDefaults } from "../BillInfoFields";
 import { confirmLines } from "./actions";
 import { money, verdictClass } from "./checkFormat";
 
 // ref is the line's position in what the reader found, so detail blocks still point at it after edits.
-type Row = { label: string; amount: string; ref: number | null };
+type Row = { label: string; amount: string; units: string; rate: string; ref: number | null };
 type Detail = DetailSection & { itemCount: number };
 
 type Bill = { id: string; provider: string | null; bill_type: string };
@@ -43,13 +44,20 @@ export default function LinesEditor({ bill }: { bill: Bill }) {
         period_end: read.periodEnd,
       });
       setRows(
-        data.lines.map((l: { label: string; amount: number }, i: number) => ({ label: l.label, amount: String(l.amount), ref: i })),
+        data.lines.map((l: { label: string; amount: number; units: number | null; rate: number | null }, i: number) => ({
+          label: l.label,
+          amount: String(l.amount),
+          units: l.units === null ? "" : String(l.units),
+          rate: l.rate === null ? "" : String(l.rate),
+          ref: i,
+        })),
       );
       setDetails(
-        data.details.map((d: { name: string; summaryIndex: number | null; items: { amount: number }[]; subtotal: number | null }) => ({
+        data.details.map((d: { name: string; summaryIndex: number | null; items: { amount: number; units: number | null; rate: number | null }[]; subtotal: number | null }) => ({
           name: d.name,
           summaryRef: d.summaryIndex,
           items: d.items.map((item) => item.amount),
+          rated: d.items.flatMap((item) => (item.units && item.rate ? [{ units: item.units, rate: item.rate, amount: item.amount }] : [])),
           subtotal: d.subtotal,
           itemCount: d.items.length,
         })),
@@ -67,9 +75,19 @@ export default function LinesEditor({ bill }: { bill: Bill }) {
 
   async function confirm() {
     if (!rows) return;
-    const lines = rows.map((r) => ({ label: r.label, amount: Number(r.amount), ref: r.ref }));
+    const lines = rows.map((r) => ({
+      label: r.label,
+      amount: Number(r.amount),
+      units: parseOptionalNumber(r.units),
+      rate: parseOptionalNumber(r.rate),
+      ref: r.ref,
+    }));
     if (rows.some((r) => !r.label.trim() || !r.amount.trim()) || lines.some((l) => !Number.isFinite(l.amount))) {
       setError("Every line needs a label and a number amount.");
+      return;
+    }
+    if (lines.some((l) => l.units === undefined || l.rate === undefined)) {
+      setError("Units and rate must be numbers, or left empty.");
       return;
     }
     setBusy(true);
@@ -78,7 +96,7 @@ export default function LinesEditor({ bill }: { bill: Bill }) {
     const chosen = Object.fromEntries(
       ["bill_type", "provider", "period_start", "period_end"].map((name) => [name, String(fields.get(name) ?? "")]),
     );
-    const result = await confirmLines(billId, lines, details, chosen);
+    const result = await confirmLines(billId, lines.map((l) => ({ ...l, units: l.units ?? null, rate: l.rate ?? null })), details, chosen);
     setBusy(false);
     if (result.error) setError(result.error);
     else router.refresh();
@@ -116,6 +134,8 @@ export default function LinesEditor({ bill }: { bill: Bill }) {
           <thead>
             <tr>
               <th>Label</th>
+              <th className="num">Units</th>
+              <th className="num">Rate</th>
               <th className="num">Amount</th>
               <th />
             </tr>
@@ -125,6 +145,12 @@ export default function LinesEditor({ bill }: { bill: Bill }) {
               <tr key={index}>
                 <td>
                   <input value={row.label} onChange={(e) => update(index, { label: e.target.value })} />
+                </td>
+                <td>
+                  <input type="number" step="any" min="0" value={row.units} onChange={(e) => update(index, { units: e.target.value })} />
+                </td>
+                <td>
+                  <input type="number" step="any" min="0" value={row.rate} onChange={(e) => update(index, { rate: e.target.value })} />
                 </td>
                 <td>
                   <input
@@ -180,7 +206,7 @@ export default function LinesEditor({ bill }: { bill: Bill }) {
         </>
       )}
       <p>
-        <button type="button" className="secondary" onClick={() => setRows([...rows, { label: "", amount: "", ref: null }])}>
+        <button type="button" className="secondary" onClick={() => setRows([...rows, { label: "", amount: "", units: "", rate: "", ref: null }])}>
           Add a line
         </button>{" "}
         <button type="button" onClick={confirm} disabled={busy || rows.length === 0}>

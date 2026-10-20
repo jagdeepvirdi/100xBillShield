@@ -2,10 +2,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { BILL_TYPES, type BillType } from "@/lib/billTypes";
 import { geminiGenerate, withFallback } from "@/lib/llm";
+import { withImpliedRates } from "@/lib/rates";
 
+// units and rate are only filled when the bill prints them for that line; the model never works them out.
 const lineSchema = z.object({
   label: z.string().trim().min(1),
   amount: z.number().finite(),
+  units: z.number().finite().nonnegative().nullable().catch(null).default(null),
+  rate: z.number().finite().nonnegative().nullable().catch(null).default(null),
 });
 
 // Anything the model gets wrong or leaves out becomes null; the user can fill it in on the confirm screen.
@@ -52,10 +56,11 @@ About the lines: many bills have a SUMMARY (what the customer is actually charge
 Rules:
 - Copy each amount exactly as printed. Do not add, subtract, convert or correct anything.
 - Use a negative amount for discounts, credits and subsidies.
+- units: the quantity for a line when the bill prints it (kWh or units of electricity, litres, cylinders, nights), otherwise null. rate: the price per unit as printed, otherwise null. Never calculate either one.
 - Leave out account numbers, customer or consumer ids, phone numbers and addresses.
 - If the file is not a bill or nothing is readable, reply with {"bill_type": null, "provider": null, "period_start": null, "period_end": null, "summary": [], "details": []}.
 Reply with ONLY JSON, no prose and no code fences:
-{"bill_type":string|null,"provider":string|null,"period_start":string|null,"period_end":string|null,"summary":[{"label":string,"amount":number}],"details":[{"name":string,"summary_index":number|null,"items":[{"label":string,"amount":number}],"subtotal":number|null}]}`;
+{"bill_type":string|null,"provider":string|null,"period_start":string|null,"period_end":string|null,"summary":[{"label":string,"amount":number,"units":number|null,"rate":number|null}],"details":[{"name":string,"summary_index":number|null,"items":[{"label":string,"amount":number,"units":number|null,"rate":number|null}],"subtotal":number|null}]}`;
 
 const MIME_TYPES: Record<string, string> = {
   jpg: "image/jpeg",
@@ -77,7 +82,10 @@ function parseBill(text: string): ExtractedBill {
       periodStart: datesOk ? bill.period_start : null,
       periodEnd: datesOk ? bill.period_end : null,
     },
-    lines: bill.summary,
+    lines: withImpliedRates(
+      bill.summary,
+      bill.details.map((d) => ({ summaryIndex: d.summary_index, items: d.items })),
+    ),
     details: bill.details.map((d) => ({
       name: d.name,
       summaryIndex: d.summary_index !== null && d.summary_index < bill.summary.length ? d.summary_index : null,

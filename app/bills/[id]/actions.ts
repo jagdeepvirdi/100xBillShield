@@ -6,7 +6,7 @@ import { z } from "zod";
 import { ANSWER_DISPUTE, ANSWER_EXPECTED } from "@/lib/answers";
 import { billInfoSchema } from "@/lib/billInfo";
 import { runChecks } from "@/lib/checks";
-import { isOneOff } from "@/lib/billTypes";
+import { isOneOff, promiseKind } from "@/lib/billTypes";
 import { DETAIL_PREFIX, latestRun, refreshRollups, runDetailChecks, type DetailSection } from "@/lib/detailChecks";
 import { redactLabel, redactText } from "@/lib/redact";
 import { wordsChanged } from "@/lib/wordsChanged";
@@ -17,6 +17,7 @@ const detailSchema = z.object({
   summaryRef: z.number().int().nonnegative().nullable(),
   items: z.array(z.number().finite()).max(1000),
   subtotal: z.number().finite().nullable(),
+  rated: z.array(z.object({ units: z.number().finite(), rate: z.number().finite(), amount: z.number().finite() })).max(1000).default([]),
 });
 
 const inputSchema = z.object({
@@ -26,6 +27,8 @@ const inputSchema = z.object({
       z.object({
         label: z.string().trim().min(1).max(200),
         amount: z.number().finite(),
+        units: z.number().finite().nonnegative().nullable(),
+        rate: z.number().finite().nonnegative().nullable(),
         ref: z.number().int().nonnegative().nullable(),
       }),
     )
@@ -41,7 +44,7 @@ const inputSchema = z.object({
 // here and saved as check_result rows, so the detail itself is never stored.
 export async function confirmLines(
   billId: string,
-  lines: { label: string; amount: number; ref: number | null }[],
+  lines: { label: string; amount: number; units: number | null; rate: number | null; ref: number | null }[],
   details: DetailSection[],
   info: Record<string, string>,
 ): Promise<{ error?: string }> {
@@ -65,6 +68,8 @@ export async function confirmLines(
     line_no: index + 1,
     label: redactLabel(line.label),
     amount: line.amount,
+    units: line.units,
+    rate: line.rate,
   }));
   const { data: saved, error } = await supabase.from("line_item").insert(rows).select("id, line_no");
   if (error || !saved) return { error: `Could not save the lines: ${error?.message}` };
@@ -133,7 +138,15 @@ export async function updateBill(formData: FormData) {
 const editSchema = z.object({
   billId: z.uuid(),
   lines: z
-    .array(z.object({ id: z.uuid().nullable(), label: z.string().trim().min(1).max(200), amount: z.number().finite() }))
+    .array(
+      z.object({
+        id: z.uuid().nullable(),
+        label: z.string().trim().min(1).max(200),
+        amount: z.number().finite(),
+        units: z.number().finite().nonnegative().nullable(),
+        rate: z.number().finite().nonnegative().nullable(),
+      }),
+    )
     .min(1)
     .max(200),
 });
@@ -142,7 +155,7 @@ const editSchema = z.object({
 // the checks then run again and add a new run (earlier runs are kept).
 export async function saveLines(
   billId: string,
-  lines: { id: string | null; label: string; amount: number }[],
+  lines: { id: string | null; label: string; amount: number; units: number | null; rate: number | null }[],
 ): Promise<{ error?: string }> {
   const parsed = editSchema.safeParse({ billId, lines });
   if (!parsed.success) return { error: "Every line needs a label and a number amount." };
@@ -179,18 +192,23 @@ export async function saveLines(
     line_no: index + 1,
     label: redactLabel(line.label),
     amount: line.amount,
+    units: line.units,
+    rate: line.rate,
   }));
   const updates = await Promise.all(
     rows
       .filter((row) => row.id)
       .map((row) =>
-        supabase.from("line_item").update({ line_no: row.line_no, label: row.label, amount: row.amount }).eq("id", row.id!),
+        supabase
+          .from("line_item")
+          .update({ line_no: row.line_no, label: row.label, amount: row.amount, units: row.units, rate: row.rate })
+          .eq("id", row.id!),
       ),
   );
   const failed = updates.find((update) => update.error);
   if (failed?.error) return { error: `Could not save the lines: ${failed.error.message}` };
 
-  const added = rows.filter((row) => !row.id).map((row) => ({ bill_id: billId, line_no: row.line_no, label: row.label, amount: row.amount }));
+  const added = rows.filter((row) => !row.id).map((row) => ({ bill_id: billId, line_no: row.line_no, label: row.label, amount: row.amount, units: row.units, rate: row.rate }));
   if (added.length > 0) {
     const { error } = await supabase.from("line_item").insert(added);
     if (error) return { error: `Could not add the lines: ${error.message}` };
@@ -238,14 +256,29 @@ const optionalNumber = z
   .transform((v) => (v === "" ? null : Number(v)))
   .refine((v) => v === null || (Number.isFinite(v) && v >= 0 && v < 1e9), "Enter a valid number.");
 
-const promiseSchema = z.object({
+const promiseFields = {
   bill_id: z.uuid(),
-  plan_price: optionalNumber.refine((v) => v !== null, "Enter the plan price."),
-  tax_included: z.enum(["yes", "no"]).transform((v) => v === "yes"),
-  discount: optionalNumber.refine((v) => v === null || v <= 100, "Discount is a percentage, 0 to 100."),
   effective_from: z.union([z.literal("").transform(() => null), z.iso.date()]),
   notes: z.string().trim().max(1000).transform((v) => redactText(v) || null),
-});
+};
+const discountField = optionalNumber.refine((v) => v === null || v <= 100, "Discount is a percentage, 0 to 100.");
+
+// What "promised" means depends on the bill: a fixed price, a tariff per unit, or the total quoted for a purchase.
+const promiseSchemas = {
+  fixed: z.object({
+    ...promiseFields,
+    plan_price: optionalNumber.refine((v) => v !== null, "Enter the plan price."),
+    tax_included: z.enum(["yes", "no"]).transform((v) => v === "yes"),
+    discount: discountField,
+  }),
+  rate: z
+    .object({ ...promiseFields, unit_rate: optionalNumber, fixed_charge: optionalNumber, discount: discountField })
+    .refine((v) => v.unit_rate !== null || v.fixed_charge !== null, "Enter the rate per unit or the fixed charge."),
+  quote: z.object({
+    ...promiseFields,
+    plan_price: optionalNumber.refine((v) => v !== null, "Enter the total you were quoted."),
+  }),
+};
 
 function failPromise(billId: string, message: string): never {
   redirect(`/bills/${billId}?promise_error=${encodeURIComponent(message)}`);
@@ -253,22 +286,29 @@ function failPromise(billId: string, message: string): never {
 
 export async function savePromise(formData: FormData) {
   const billId = String(formData.get("bill_id") ?? "");
-  const parsed = promiseSchema.safeParse({
+  if (!z.uuid().safeParse(billId).success) redirect("/bills");
+
+  const supabase = await createClient();
+  const { data: bill } = await supabase.from("bill").select("bill_type").eq("id", billId).maybeSingle();
+  if (!bill) redirect("/bills");
+
+  const kind = promiseKind(bill.bill_type);
+  const parsed = promiseSchemas[kind].safeParse({
     bill_id: billId,
     plan_price: formData.get("plan_price") ?? "",
     tax_included: formData.get("tax_included"),
+    unit_rate: formData.get("unit_rate") ?? "",
+    fixed_charge: formData.get("fixed_charge") ?? "",
     discount: formData.get("discount") ?? "",
     effective_from: formData.get("effective_from") ?? "",
     notes: formData.get("notes") ?? "",
   });
-  if (!parsed.success) {
-    if (!z.uuid().safeParse(billId).success) redirect("/bills");
-    failPromise(billId, parsed.error.issues[0].message);
-  }
+  if (!parsed.success) failPromise(billId, parsed.error.issues[0].message);
 
-  const supabase = await createClient();
-  // RLS rejects the insert if the bill is not the caller's.
-  const { error } = await supabase.from("promise").insert(parsed.data);
+  // A quote is an all-in total, so tax is included in it.
+  const row: Record<string, unknown> = kind === "quote" ? { ...parsed.data, tax_included: true } : parsed.data;
+  // RLS rejects the insert when the bill belongs to someone else.
+  const { error } = await supabase.from("promise").insert(row);
   if (error) failPromise(billId, `Could not save the promise: ${error.message}`);
 
   // A new promise changes what the bill is checked against, so the checks run again (earlier runs are kept).
@@ -312,28 +352,38 @@ async function insertChecks(supabase: Supabase, billId: string): Promise<{ error
 
   const { data: lines } = await supabase
     .from("line_item")
-    .select("id, label, amount")
+    .select("id, label, amount, units, rate")
     .eq("bill_id", billId)
     .order("line_no");
   if (!lines?.length) return { error: "Confirm the bill lines first." };
 
   const { data: promise } = await supabase
     .from("promise")
-    .select("plan_price, tax_included, discount, effective_from")
+    .select("plan_price, tax_included, discount, effective_from, unit_rate, fixed_charge")
     .eq("bill_id", billId)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
+  const oneOff = isOneOff(bill.bill_type);
+  const num = (value: string | number | null) => (value === null ? null : Number(value));
   const results = runChecks({
-    lines: lines.map((l) => ({ id: l.id, label: l.label, amount: Number(l.amount) })),
-    promise: promise && {
-      planPrice: promise.plan_price === null ? null : Number(promise.plan_price),
-      taxIncluded: promise.tax_included,
-      discountPct: promise.discount === null ? null : Number(promise.discount),
-      effectiveFrom: promise.effective_from,
-    },
-    previousLines: isOneOff(bill.bill_type) ? null : await loadPreviousLines(supabase, bill),
+    lines: lines.map((l) => ({ id: l.id, label: l.label, amount: Number(l.amount), units: num(l.units), rate: num(l.rate) })),
+    // A one-off purchase has no plan; what the user entered is the total they were quoted.
+    promise:
+      promise && !oneOff
+        ? {
+            planPrice: num(promise.plan_price),
+            taxIncluded: promise.tax_included,
+            discountPct: num(promise.discount),
+            effectiveFrom: promise.effective_from,
+            unitRate: num(promise.unit_rate),
+            fixedCharge: num(promise.fixed_charge),
+          }
+        : null,
+    oneOff,
+    quote: oneOff ? num(promise?.plan_price ?? null) : null,
+    previousLines: oneOff ? null : await loadPreviousLines(supabase, bill),
     periodEnd: bill.period_end,
   });
   if (results.length === 0) {

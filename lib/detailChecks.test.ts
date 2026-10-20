@@ -81,3 +81,27 @@ describe("refreshing roll-ups after a Summary line is edited", () => {
     expect(refreshRollups(ok, new Map([["addons", 150]])).rows[1].verdict).toBe("wrong");
   });
 });
+
+describe("slabs that print units and a rate", () => {
+  const energy: DetailSection = {
+    name: "Energy charges",
+    summaryRef: 0,
+    items: [400, 300],
+    subtotal: 700,
+    rated: [
+      { units: 100, rate: 4, amount: 400 },
+      { units: 50, rate: 6, amount: 300 },
+    ],
+  };
+
+  it("passes slabs that multiply out", () => {
+    expect(runDetailChecks([energy], new Map([[0, { id: "e", amount: 700 }]])).every((r) => r.verdict === "ok")).toBe(true);
+  });
+
+  it("flags a slab that does not multiply out and points at the Summary line", () => {
+    const wrong = { ...energy, rated: [energy.rated![0], { units: 50, rate: 6, amount: 350 }] };
+    const [first, second] = runDetailChecks([wrong], new Map([[0, { id: "e", amount: 700 }]]));
+    expect(first.verdict).toBe("ok");
+    expect(second).toMatchObject({ verdict: "wrong", expected: 300, actual: 350, lineId: "e" });
+  });
+});

@@ -3,8 +3,8 @@ import type { BillStatus } from "@/lib/billStatus";
 import { isOneOff } from "@/lib/billTypes";
 import type { LineHistory } from "@/lib/history";
 import { STATUS } from "../StatusBadge";
-import { billTypeLabel, formatDay, formatStamp, periodText } from "../format";
-import { runBillChecks, savePromise } from "./actions";
+import { billTypeLabel, formatStamp, periodText } from "../format";
+import { runBillChecks } from "./actions";
 import type { CheckRow } from "./checkFormat";
 import AnswerBox, { type Answered, type Question } from "./AnswerBox";
 import CheckResults from "./CheckResults";
@@ -15,14 +15,15 @@ import EditLines from "./EditLines";
 import EarlierBills from "./EarlierBills";
 import LinesEditor from "./LinesEditor";
 import MessageBox from "./MessageBox";
+import PromiseSection, { type PromiseRow } from "./PromiseSection";
 import SentTracker from "./SentTracker";
 
 type Money = number | string | null;
 
 export type BillViewProps = {
   bill: { id: string; provider: string | null; bill_type: string; period_start: string | null; period_end: string | null; created_at: string };
-  lines: { id: string; label: string; amount: Money }[];
-  promise: { plan_price: Money; tax_included: boolean | null; discount: Money; effective_from: string | null; notes: string | null } | null;
+  lines: { id: string; label: string; amount: Money; units: Money; rate: Money }[];
+  promise: PromiseRow | null;
   checks: CheckRow[];
   detailChecks: CheckRow[];
   status: BillStatus;
@@ -74,6 +75,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
   const sentOn = sentAt ? formatStamp(sentAt) : null;
   // A one-off purchase has no promised plan, so nothing is waited for there.
   const oneOff = isOneOff(bill.bill_type);
+  const hasRates = lines.some((line) => line.units !== null || line.rate !== null);
   const step = nextStep({ hasLines: lines.length > 0, hasPromise: oneOff || Boolean(promise), hasChecks: checks.length > 0, hasIssues, message });
 
   return (
@@ -123,6 +125,8 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
               <thead>
                 <tr>
                   <th>Line</th>
+                  {hasRates && <th className="num">Units</th>}
+                  {hasRates && <th className="num">Rate</th>}
                   <th className="num">Amount</th>
                 </tr>
               </thead>
@@ -130,75 +134,21 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
                 {lines.map((line) => (
                   <tr key={line.id}>
                     <td>{line.label}</td>
+                    {hasRates && <td className="num">{line.units === null ? "" : Number(line.units)}</td>}
+                    {hasRates && <td className="num">{line.rate === null ? "" : Number(line.rate)}</td>}
                     <td className="num">{Number(line.amount).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <EditLines key={lines.map((l) => `${l.id}:${l.amount}:${l.label}`).join()} billId={bill.id} lines={lines} />
+          <EditLines key={lines.map((l) => `${l.id}:${l.amount}:${l.label}:${l.units}:${l.rate}`).join()} billId={bill.id} lines={lines} />
         </section>
       ) : (
         <LinesEditor bill={bill} />
       )}
 
-      {!oneOff && (
-        <section>
-          <h2>What you were promised</h2>
-          {promise ? (
-            <dl className="facts">
-              <dt>Plan price</dt>
-              <dd>{Number(promise.plan_price).toFixed(2)}</dd>
-              <dt>Tax included</dt>
-              <dd>{promise.tax_included ? "Yes" : "No"}</dd>
-              <dt>Discount</dt>
-              <dd>{promise.discount === null ? "None" : `${Number(promise.discount)}%`}</dd>
-              <dt>Effective from</dt>
-              <dd>{promise.effective_from ? formatDay(promise.effective_from) : "Not given"}</dd>
-              {promise.notes && (
-                <>
-                  <dt>Notes</dt>
-                  <dd>{promise.notes}</dd>
-                </>
-              )}
-            </dl>
-          ) : (
-            <p className="muted">The checks compare your bill with this. Enter what the company told you.</p>
-          )}
-          <h3>{promise ? "Save a new promise" : "Save the promise"}</h3>
-          {promise && <p className="muted">Saving again keeps the old one. The newest promise is the one used.</p>}
-          {promiseError && <p role="alert">{promiseError}</p>}
-          <form action={savePromise} className="form-grid">
-            <input type="hidden" name="bill_id" value={bill.id} />
-            <label>
-              Plan price
-              <input name="plan_price" type="number" step="0.01" min="0" required />
-            </label>
-            <label>
-              Is tax included in that price?
-              <select name="tax_included" required>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <label>
-              Discount % (optional)
-              <input name="discount" type="number" step="0.01" min="0" max="100" />
-            </label>
-            <label>
-              Effective from (optional)
-              <input name="effective_from" type="date" />
-            </label>
-            <label className="full">
-              Notes (optional, no account numbers, phone numbers or addresses)
-              <textarea name="notes" rows={3} maxLength={1000} />
-            </label>
-            <div className="full">
-              <button type="submit">Save promise</button>
-            </div>
-          </form>
-        </section>
-      )}
+      <PromiseSection billId={bill.id} billType={bill.bill_type} promise={promise} error={promiseError} />
 
       {lines.length > 0 && (
         <section>
@@ -212,7 +162,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
               {checks.length > 0 ? "Run the checks again" : "Run the checks"}
             </button>
           </form>
-          {!oneOff && <p className="muted">Saving a new promise runs the checks again for you.</p>}
+          <p className="muted">Saving a promise or quote runs the checks again for you.</p>
         </section>
       )}
 

@@ -8,7 +8,9 @@ export const isDetailRule = (rule: string) => rule.startsWith(DETAIL_PREFIX);
 const ROLLUP_END = ": total matches the Summary line";
 
 // summaryRef points at the Summary line this block explains; null when none matches.
-export type DetailSection = { name: string; summaryRef: number | null; items: number[]; subtotal: number | null };
+export type RatedItem = { units: number; rate: number; amount: number };
+// rated lists the items that print units and a rate (for example electricity slabs), so each can be multiplied out.
+export type DetailSection = { name: string; summaryRef: number | null; items: number[]; subtotal: number | null; rated?: RatedItem[] };
 export type SummaryLineRef = { id?: string; amount: number };
 
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
@@ -27,7 +29,7 @@ function judge(rule: string, expected: number, actual: number, lineId?: string):
 // 2. The block's total (printed subtotal, else the items' sum) equals the Summary line it explains.
 export function runDetailChecks(sections: DetailSection[], summary: Map<number, SummaryLineRef>): CheckResult[] {
   return sections.flatMap((section) => {
-    if (section.items.length === 0 && section.subtotal === null) return [];
+    if (section.items.length === 0 && section.subtotal === null && !section.rated?.length) return [];
 
     const name = section.name.slice(0, 60);
     const parent = section.summaryRef === null ? undefined : summary.get(section.summaryRef);
@@ -35,6 +37,10 @@ export function runDetailChecks(sections: DetailSection[], summary: Map<number, 
     const basis = section.subtotal === null ? itemsCents : toCents(section.subtotal);
 
     const results: CheckResult[] = [];
+    (section.rated ?? []).forEach((item, index) => {
+      const rule = `${DETAIL_PREFIX}${name}: item ${index + 1}, units times rate matches the charge`;
+      results.push(judge(rule, Math.round(item.units * item.rate * 100), toCents(item.amount), parent?.id));
+    });
     if (section.subtotal !== null) {
       results.push(judge(`${DETAIL_PREFIX}${name}: items add up to the printed subtotal`, itemsCents, basis, parent?.id));
     }

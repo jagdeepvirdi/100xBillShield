@@ -3,18 +3,22 @@
 
 export type Verdict = "ok" | "wrong" | "unexplained";
 
-export type CheckLine = { id?: string; label: string; amount: number };
+export type CheckLine = { id?: string; label: string; amount: number; units?: number | null; rate?: number | null };
 
 export type CheckPromise = {
   planPrice: number | null;
   taxIncluded: boolean | null;
   discountPct: number | null;
   effectiveFrom: string | null;
+  unitRate?: number | null; // the tariff per unit (electricity, water)
+  fixedCharge?: number | null;
 };
 
 export type CheckInput = {
   lines: CheckLine[];
   promise: CheckPromise | null;
+  oneOff?: boolean; // a restaurant bill, shop purchase or receipt: no promised plan, fees are asked about
+  quote?: number | null; // the total the user was quoted for a one-off purchase
   previousLines: CheckLine[] | null;
   periodEnd: string | null;
 };
@@ -169,7 +173,7 @@ function taxRate(lines: Classified[]): number | null {
 }
 
 function activePromise(promise: CheckPromise | null, periodEnd: string | null): CheckPromise | null {
-  if (!promise || promise.planPrice === null) return null;
+  if (!promise) return null;
   if (promise.effectiveFrom && periodEnd && promise.effectiveFrom > periodEnd) return null;
   return promise;
 }
@@ -177,7 +181,8 @@ function activePromise(promise: CheckPromise | null, periodEnd: string | null): 
 // The plan line is the charge that equals the promised price, before or after the discount,
 // and, when the price includes tax, either with or without the tax.
 function findPlanLine(charges: Classified[], promise: CheckPromise, rate: number | null) {
-  const plan = promise.planPrice!;
+  if (promise.planPrice === null) return null;
+  const plan = promise.planPrice;
   const afterDiscount = 1 - (promise.discountPct ?? 0) / 100;
   const prices = promise.taxIncluded && rate ? [plan, plan / (1 + rate)] : [plan];
   for (const line of charges) {
@@ -249,6 +254,53 @@ function meterChecks(lines: Classified[]): CheckResult[] {
   });
 }
 
+// Units times the printed rate must equal the charge. When the user gave a tariff, a bill with one single rate
+// is compared with it (a bill with several rates cannot be compared with one tariff, so that is skipped).
+const RATE_TOLERANCE = 0.005;
+const FIXED_CHARGE = /\b(fixed|demand|meter (rent|charge)|rental)\b/i;
+
+function rateChecks(lines: Classified[], promise: CheckPromise | null): CheckResult[] {
+  const rated = ofKind(lines, "charge").filter((l) => l.units && l.rate && l.units > 0 && l.rate > 0);
+  const out = rated.map((l) =>
+    judge("Units times the printed rate vs the charge", Math.round(l.units! * l.rate! * 100), l.cents, l.id),
+  );
+
+  const tariff = promise?.unitRate;
+  if (tariff && rated.length > 0 && rated.every((l) => Math.abs(l.rate! - rated[0].rate!) <= RATE_TOLERANCE)) {
+    out.push(
+      result(
+        "Printed rate per unit vs the rate you were promised",
+        toCents(tariff),
+        toCents(rated[0].rate!),
+        Math.abs(rated[0].rate! - tariff) <= RATE_TOLERANCE ? "ok" : "wrong",
+        rated[0].id,
+      ),
+    );
+  }
+
+  const fixed = promise?.fixedCharge;
+  const fixedLines = ofKind(lines, "charge").filter((l) => FIXED_CHARGE.test(l.label));
+  if (fixed && fixedLines.length === 1) {
+    out.push(judge("Fixed charge vs the fixed charge you were promised", toCents(fixed), fixedLines[0].cents, fixedLines[0].id));
+  }
+  return out;
+}
+
+// On a one-off bill there is no earlier bill to compare with, so optional-looking fees are asked about instead.
+const OPTIONAL_FEE = /\b(service charge|convenience|handling|packing|delivery|platform|processing|booking fee|surcharge|gratuity|tip)\b/i;
+
+function feeChecks(lines: Classified[]): CheckResult[] {
+  return ofKind(lines, "charge")
+    .filter((l) => OPTIONAL_FEE.test(l.label))
+    .map((l) => result("Extra fee on a one-off bill", null, l.cents, "unexplained", l.id));
+}
+
+function quoteCheck(lines: Classified[], quote: number | null): CheckResult[] {
+  const total = ofKind(lines, "total").at(-1);
+  if (quote === null || !total) return [];
+  return [judge("Billed total vs the total you were quoted", toCents(quote), total.cents, total.id)];
+}
+
 // Digits and punctuation are dropped so "Energy 120 to 150" matches "Energy 150 to 180".
 export const keyOf = (label: string) => label.toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
 
@@ -286,6 +338,7 @@ export function runChecks(input: CheckInput): CheckResult[] {
     ...discountCheck(lines, promise, rate),
     ...roundingChecks(lines),
     ...meterChecks(lines),
-    ...previousChecks(lines, input.previousLines),
+    ...rateChecks(lines, promise),
+    ...(input.oneOff ? [...feeChecks(lines), ...quoteCheck(lines, input.quote ?? null)] : previousChecks(lines, input.previousLines)),
   ];
 }
