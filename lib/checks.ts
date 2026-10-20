@@ -231,7 +231,7 @@ function meterChecks(lines: Classified[]): CheckResult[] {
 }
 
 // Digits and punctuation are dropped so "Energy 120 to 150" matches "Energy 150 to 180".
-const keyOf = (label: string) => label.toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+export const keyOf = (label: string) => label.toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
 
 function previousChecks(lines: Classified[], previousLines: CheckLine[] | null): CheckResult[] {
   if (!previousLines?.length) return [];

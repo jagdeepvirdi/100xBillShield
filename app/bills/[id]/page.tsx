@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { lineHistories } from "@/lib/history";
 import { createClient } from "@/lib/supabase/server";
 import { runBillChecks, savePromise } from "./actions";
 import CheckResults from "./CheckResults";
 import CleanBill from "./CleanBill";
+import EarlierBills from "./EarlierBills";
 import LinesEditor from "./LinesEditor";
+import { loadEarlierLines } from "./loadEarlier";
 import MessageBox from "./MessageBox";
 import SentTracker from "./SentTracker";
 
@@ -52,6 +55,10 @@ export default async function BillPage({
     .limit(200);
   const latestChecks = checkRows?.filter((row) => row.created_at === checkRows[0].created_at) ?? [];
   const lineLabels = new Map((lines ?? []).map((line) => [line.id, line.label]));
+  const histories = lineHistories(
+    (lines ?? []).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })),
+    await loadEarlierLines(supabase, bill.created_at),
+  );
   const hasIssues = latestChecks.some((row) => row.verdict !== "ok" && row.line_item_id);
   const allOk = latestChecks.length > 0 && latestChecks.every((row) => row.verdict === "ok");
 
@@ -91,6 +98,8 @@ export default async function BillPage({
       ) : (
         <LinesEditor billId={bill.id} />
       )}
+
+      {histories.length > 0 && <EarlierBills histories={histories} />}
 
       {lines && lines.length > 0 && (
         <section>
