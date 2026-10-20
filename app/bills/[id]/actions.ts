@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { runChecks } from "@/lib/checks";
 import { redactLabel, redactText } from "@/lib/redact";
 import { createClient } from "@/lib/supabase/server";
 
@@ -81,6 +82,88 @@ export async function savePromise(formData: FormData) {
   // RLS rejects the insert if the bill is not the caller's.
   const { error } = await supabase.from("promise").insert(parsed.data);
   if (error) failPromise(billId, `Could not save the promise: ${error.message}`);
+
+  revalidatePath(`/bills/${billId}`);
+  redirect(`/bills/${billId}`);
+}
+
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+function failChecks(billId: string, message: string): never {
+  redirect(`/bills/${billId}?check_error=${encodeURIComponent(message)}`);
+}
+
+// The most recent earlier bill from the same provider, matched ignoring case and spaces.
+async function loadPreviousLines(supabase: Supabase, bill: { provider: string | null; created_at: string }) {
+  if (!bill.provider) return null;
+  const provider = bill.provider.trim().toLowerCase();
+  const { data: earlier } = await supabase
+    .from("bill")
+    .select("id, provider")
+    .lt("created_at", bill.created_at)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  const previous = earlier?.find((b) => b.provider?.trim().toLowerCase() === provider);
+  if (!previous) return null;
+
+  const { data } = await supabase.from("line_item").select("label, amount").eq("bill_id", previous.id).order("line_no");
+  return data?.map((l) => ({ label: l.label, amount: Number(l.amount) })) ?? null;
+}
+
+// Each run adds a new set of check_result rows; earlier runs are kept.
+export async function runBillChecks(formData: FormData) {
+  const billId = String(formData.get("bill_id") ?? "");
+  if (!z.uuid().safeParse(billId).success) redirect("/bills");
+
+  const supabase = await createClient();
+  const { data: bill } = await supabase
+    .from("bill")
+    .select("provider, period_end, created_at")
+    .eq("id", billId)
+    .maybeSingle();
+  if (!bill) redirect("/bills");
+
+  const { data: lines } = await supabase
+    .from("line_item")
+    .select("id, label, amount")
+    .eq("bill_id", billId)
+    .order("line_no");
+  if (!lines?.length) failChecks(billId, "Confirm the bill lines first.");
+
+  const { data: promise } = await supabase
+    .from("promise")
+    .select("plan_price, tax_included, discount, effective_from")
+    .eq("bill_id", billId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const results = runChecks({
+    lines: lines.map((l) => ({ id: l.id, label: l.label, amount: Number(l.amount) })),
+    promise: promise && {
+      planPrice: promise.plan_price === null ? null : Number(promise.plan_price),
+      taxIncluded: promise.tax_included,
+      discountPct: promise.discount === null ? null : Number(promise.discount),
+      effectiveFrom: promise.effective_from,
+    },
+    previousLines: await loadPreviousLines(supabase, bill),
+    periodEnd: bill.period_end,
+  });
+  if (results.length === 0) {
+    failChecks(billId, "No check applies yet: the lines have no total, no tax rate and there is no earlier bill to compare.");
+  }
+
+  const { error } = await supabase.from("check_result").insert(
+    results.map((r) => ({
+      bill_id: billId,
+      line_item_id: r.lineId,
+      rule: r.rule,
+      expected: r.expected,
+      actual: r.actual,
+      verdict: r.verdict,
+    })),
+  );
+  if (error) failChecks(billId, `Could not save the checks: ${error.message}`);
 
   revalidatePath(`/bills/${billId}`);
   redirect(`/bills/${billId}`);

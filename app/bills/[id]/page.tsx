@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { savePromise } from "./actions";
+import { runBillChecks, savePromise } from "./actions";
+import CheckResults from "./CheckResults";
 import LinesEditor from "./LinesEditor";
 
 export default async function BillPage({
@@ -9,10 +10,10 @@ export default async function BillPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ promise_error?: string }>;
+  searchParams: Promise<{ promise_error?: string; check_error?: string }>;
 }) {
   const { id } = await params;
-  const { promise_error } = await searchParams;
+  const { promise_error, check_error } = await searchParams;
   const supabase = await createClient();
 
   // RLS hides other users' bills, so a foreign or bad id gives no row.
@@ -38,6 +39,16 @@ export default async function BillPage({
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+
+  // Every run is kept; the rows of one run share a created_at, so the newest run is the first group.
+  const { data: checkRows } = await supabase
+    .from("check_result")
+    .select("id, rule, expected, actual, verdict, line_item_id, created_at")
+    .eq("bill_id", id)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  const latestChecks = checkRows?.filter((row) => row.created_at === checkRows[0].created_at) ?? [];
+  const lineLabels = new Map((lines ?? []).map((line) => [line.id, line.label]));
 
   return (
     <main>
@@ -66,6 +77,19 @@ export default async function BillPage({
         </section>
       ) : (
         <LinesEditor billId={bill.id} />
+      )}
+
+      {lines && lines.length > 0 && (
+        <section>
+          <h2>Checks</h2>
+          {check_error && <p role="alert">{check_error}</p>}
+          {latestChecks.length > 0 && <CheckResults rows={latestChecks} labels={lineLabels} />}
+          <form action={runBillChecks}>
+            <input type="hidden" name="bill_id" value={bill.id} />
+            <button type="submit">{latestChecks.length > 0 ? "Run the checks again" : "Run the checks"}</button>
+          </form>
+          <p>Run them again after you save or change the promise.</p>
+        </section>
       )}
 
       <section>
