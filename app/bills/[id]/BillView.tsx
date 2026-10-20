@@ -5,6 +5,7 @@ import { runBillChecks, savePromise } from "./actions";
 import type { CheckRow } from "./checkFormat";
 import CheckResults from "./CheckResults";
 import CleanBill from "./CleanBill";
+import DeleteBill from "./DeleteBill";
 import EarlierBills from "./EarlierBills";
 import LinesEditor from "./LinesEditor";
 import MessageBox from "./MessageBox";
@@ -21,6 +22,7 @@ export type BillViewProps = {
   message: { id: string; draft: string; sent_text: string | null; sent_at: string | null; words_changed: number | null } | null;
   promiseError?: string;
   checkError?: string;
+  deleteError?: string;
 };
 
 function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolean; allOk: boolean; hasIssues: boolean; message: BillViewProps["message"] }) {
@@ -56,7 +58,7 @@ function nextStep(s: { hasLines: boolean; hasPromise: boolean; hasChecks: boolea
   return null;
 }
 
-export default function BillView({ bill, lines, promise, checks, histories, message, promiseError, checkError }: BillViewProps) {
+export default function BillView({ bill, lines, promise, checks, histories, message, promiseError, checkError, deleteError }: BillViewProps) {
   const labels = new Map(lines.map((line) => [line.id, line.label]));
   const hasIssues = checks.some((row) => row.verdict !== "ok" && row.line_item_id);
   const allOk = checks.length > 0 && checks.every((row) => row.verdict === "ok");
@@ -202,6 +204,8 @@ export default function BillView({ bill, lines, promise, checks, histories, mess
       )}
 
       {histories.length > 0 && <EarlierBills histories={histories} />}
+
+      <DeleteBill billId={bill.id} error={deleteError} />
     </main>
   );
 }

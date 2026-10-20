@@ -9,10 +9,10 @@ export default async function BillPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ promise_error?: string; check_error?: string }>;
+  searchParams: Promise<{ promise_error?: string; check_error?: string; delete_error?: string }>;
 }) {
   const { id } = await params;
-  const { promise_error, check_error } = await searchParams;
+  const { promise_error, check_error, delete_error } = await searchParams;
   const supabase = await createClient();
 
   // RLS hides other users' bills, so a foreign or bad id gives no row.
@@ -71,6 +71,7 @@ export default async function BillPage({
       message={message}
       promiseError={promise_error}
       checkError={check_error}
+      deleteError={delete_error}
     />
   );
 }

@@ -205,3 +205,23 @@ export async function saveSent(messageId: string, sentText: string): Promise<{ e
   revalidatePath(`/bills/${message.bill_id}`);
   return {};
 }
+
+export async function deleteBill(formData: FormData) {
+  const billId = z.uuid().safeParse(formData.get("bill_id"));
+  if (!billId.success) redirect("/bills");
+
+  const supabase = await createClient();
+
+  const { data: bill } = await supabase.from("bill").select("image_link").eq("id", billId.data).maybeSingle();
+  if (!bill) redirect("/bills");
+
+  // Child rows go with the bill (on delete cascade).
+  const { error } = await supabase.from("bill").delete().eq("id", billId.data);
+  if (error) redirect(`/bills/${billId.data}?delete_error=${encodeURIComponent("Could not delete the bill.")}`);
+
+  // The row is gone either way; a failed file removal only leaves an unreferenced photo.
+  if (bill.image_link) await supabase.storage.from("bill-images").remove([bill.image_link]);
+
+  revalidatePath("/bills");
+  redirect("/bills");
+}

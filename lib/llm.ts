@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
 
 // Calls Gemini's REST API directly (no extra dependency) and returns the first text part.
 export async function geminiGenerate(parts: object[], generationConfig: object = {}): Promise<string> {

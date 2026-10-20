@@ -24,7 +24,7 @@ Other commands: `npm test` (vitest), `npm run build`.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Supabase anon key (same page). Safe for the browser because row-level security protects the data. |
 | `ANTHROPIC_API_KEY` | yes | Server only. Used to read bills and word messages. |
 | `GEMINI_API_KEY` | optional | Server only. Backup used when the Anthropic key is missing, out of credit or rate limited. |
-| `GEMINI_MODEL` | optional | Overrides the default Gemini model (`gemini-2.5-flash`). |
+| `GEMINI_MODEL` | optional | Overrides the default Gemini model (`gemini-3.5-flash-lite`). |
 
 Never put a key behind a `NEXT_PUBLIC_` prefix, and never commit `.env.local` (it is gitignored).
 
