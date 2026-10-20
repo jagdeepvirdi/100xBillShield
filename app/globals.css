@@ -583,3 +583,12 @@ tr.suspect td {
   color: inherit;
   text-decoration: underline;
 }
+
+/* A wrong or disputed check links to its line, which is marked in the lines table */
+tr.flagged td {
+  background: var(--flag-bg);
+}
+
+tr:target td {
+  box-shadow: inset 0 2px 0 var(--brand), inset 0 -2px 0 var(--brand);
+}

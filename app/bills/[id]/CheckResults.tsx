@@ -1,4 +1,4 @@
-import { difference, isUnconfirmed, money, ruleText, stateClass, stateLabel, type CheckRow } from "./checkFormat";
+import { difference, lineLink, money, ruleText, stateClass, stateLabel, type CheckRow } from "./checkFormat";
 
 export default function CheckResults({ rows, labels }: { rows: CheckRow[]; labels: Map<string, string> }) {
   return (
@@ -24,7 +24,7 @@ export default function CheckResults({ rows, labels }: { rows: CheckRow[]; label
               <td className="num">{difference(row)}</td>
               <td>
                 <span className={stateClass(row)}>
-                  {isUnconfirmed(row) ? <a href="#bill-lines">{stateLabel(row)}</a> : stateLabel(row)}
+                  {lineLink(row) ? <a href={lineLink(row)!}>{stateLabel(row)}</a> : stateLabel(row)}
                 </span>
               </td>
             </tr>

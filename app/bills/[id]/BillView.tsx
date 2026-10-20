@@ -82,6 +82,12 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
     ? sumBreakdown(lines.map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })))
     : null;
   const suspects = new Set(breakdown?.suspectIds ?? []);
+  // Lines a failed check points at, so the lines table can mark them (a wrong check beats a disputed one).
+  const flagged = new Map<string, "wrong" | "disputed">();
+  for (const row of shown) {
+    if (!row.line_item_id || (row.state !== "wrong" && row.state !== "disputed")) continue;
+    if (row.state === "wrong" || !flagged.has(row.line_item_id)) flagged.set(row.line_item_id, row.state);
+  }
   const hasRates = lines.some((line) => line.units !== null || line.rate !== null);
   const step = nextStep({ hasLines: lines.length > 0, hasPromise: oneOff || Boolean(promise), hasChecks: checks.length > 0, hasIssues, message });
 
@@ -146,10 +152,12 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
               </thead>
               <tbody>
                 {lines.map((line) => (
-                  <tr key={line.id} className={suspects.has(line.id) ? "suspect" : undefined}>
+                  <tr key={line.id} id={`line-${line.id}`} className={flagged.has(line.id) ? "flagged" : suspects.has(line.id) ? "suspect" : undefined}>
                     <td>
                       {line.label}
-                      {suspects.has(line.id) && <span className="verdict verdict-unexplained"> check this line</span>}
+                      {flagged.get(line.id) === "wrong" && <span className="verdict verdict-wrong"> wrong, see the check</span>}
+                      {flagged.get(line.id) === "disputed" && <span className="verdict verdict-unexplained"> disputed</span>}
+                      {!flagged.has(line.id) && suspects.has(line.id) && <span className="verdict verdict-unexplained"> check this line</span>}
                     </td>
                     {hasRates && <td className="num">{line.units === null ? "" : Number(line.units)}</td>}
                     {hasRates && <td className="num">{line.rate === null ? "" : Number(line.rate)}</td>}

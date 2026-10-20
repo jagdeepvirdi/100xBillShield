@@ -27,5 +27,11 @@ const STATE_CLASS = { ok: "ok", wrong: "wrong", disputed: "unexplained", pending
 // An unexplained line that counts as ok is one the user said they expected.
 export const ruleText = (row: CheckRow) => (row.verdict === "unexplained" && row.state === "ok" ? `${row.rule} (you expected this)` : row.rule);
 export const stateLabel = (row: CheckRow) => STATE_LABEL[row.state];
-export const isUnconfirmed = (row: CheckRow) => row.state === "unconfirmed";
+// Where a check points on the page: a total that could not be confirmed goes to the lines table, a wrong or
+// disputed check goes to its own line. Checks tied to no line have nowhere to point.
+export function lineLink(row: CheckRow): string | null {
+  if (row.state === "unconfirmed") return "#bill-lines";
+  if ((row.state === "wrong" || row.state === "disputed") && row.line_item_id) return `#line-${row.line_item_id}`;
+  return null;
+}
 export const stateClass = (row: CheckRow) => `verdict verdict-${STATE_CLASS[row.state]}`;
