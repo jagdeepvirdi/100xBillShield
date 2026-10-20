@@ -1,0 +1,46 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { readBillLines } from "@/lib/extract";
+import { redactLabel } from "@/lib/redact";
+import { createClient } from "@/lib/supabase/server";
+
+const bodySchema = z.object({ billId: z.uuid() });
+
+export async function POST(request: Request) {
+  const body = bodySchema.safeParse(await request.json().catch(() => null));
+  if (!body.success) return NextResponse.json({ error: "Bad request." }, { status: 400 });
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+
+  // RLS means a bill that is not the caller's comes back as no row.
+  const { data: bill } = await supabase
+    .from("bill")
+    .select("image_link")
+    .eq("id", body.data.billId)
+    .maybeSingle();
+  if (!bill?.image_link) return NextResponse.json({ error: "Bill not found." }, { status: 404 });
+
+  const { data: signed, error: signError } = await supabase.storage
+    .from("bill-images")
+    .createSignedUrl(bill.image_link, 120);
+  if (signError || !signed) {
+    return NextResponse.json({ error: "Could not open the bill file." }, { status: 500 });
+  }
+
+  try {
+    const lines = await readBillLines(signed.signedUrl, bill.image_link);
+    return NextResponse.json({
+      lines: lines.map((line) => ({ label: redactLabel(line.label), amount: line.amount })),
+    });
+  } catch (error) {
+    console.error("extract failed", error);
+    return NextResponse.json(
+      { error: "Could not read the bill. Try again, or add the lines by hand." },
+      { status: 502 },
+    );
+  }
+}

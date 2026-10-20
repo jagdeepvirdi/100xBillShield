@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import LinesEditor from "./LinesEditor";
 
 export default async function BillPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,6 +16,12 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
 
   if (!bill) notFound();
 
+  const { data: lines } = await supabase
+    .from("line_item")
+    .select("id, label, amount")
+    .eq("bill_id", id)
+    .order("line_no");
+
   return (
     <main>
       <p>
@@ -26,6 +33,23 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
         Period: {bill.period_start ?? "?"} to {bill.period_end ?? "?"}
       </p>
       <p>Added: {new Date(bill.created_at).toLocaleDateString("en-GB")}</p>
+      {lines && lines.length > 0 ? (
+        <section>
+          <h2>Bill lines</h2>
+          <table>
+            <tbody>
+              {lines.map((line) => (
+                <tr key={line.id}>
+                  <td>{line.label}</td>
+                  <td>{line.amount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ) : (
+        <LinesEditor billId={bill.id} />
+      )}
     </main>
   );
 }
