@@ -112,6 +112,13 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
             {status === "sent" && sentOn ? ` You sent it on ${sentOn}.` : ""}
             {status === "verified" && sentOn ? ` You sent a message about this bill on ${sentOn}.` : ""}
           </p>
+          {status === "verified" && (
+            <p>
+              <Link href="/bills" className="btn">
+                All well, back to my bills
+              </Link>
+            </p>
+          )}
         </div>
       )}
 
@@ -165,6 +172,13 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
           <h2>Checks</h2>
           {checkError && <p role="alert">{checkError}</p>}
           {allOk && <CleanBill rows={shown} labels={labels} />}
+          {allOk && (
+            <p>
+              <Link href="/bills" className="btn">
+                All well, back to my bills
+              </Link>
+            </p>
+          )}
           {shown.length > 0 && !allOk && <CheckResults rows={shown} labels={labels} />}
           {breakdown && (
             <div className="callout warn">
