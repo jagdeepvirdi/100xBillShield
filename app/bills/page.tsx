@@ -23,6 +23,14 @@ export default async function BillsPage() {
         </Link>
       </div>
 
+      <div className="callout">
+        <h2>Upload your bill, verify the charges, and challenge the unexpected fees.</h2>
+        <p>
+          BillShield reads the bill, checks every amount with code, and writes a short message you can send if a charge
+          is wrong or unexplained. If everything adds up, it says so and shows the maths.
+        </p>
+      </div>
+
       {error && <p role="alert">Could not load your bills: {error.message}</p>}
 
       {bills?.length === 0 && (

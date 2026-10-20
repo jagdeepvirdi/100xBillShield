@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { isOneOff } from "@/lib/billTypes";
 import { isDetailRule, latestRun } from "@/lib/detailChecks";
 import { lineHistories } from "@/lib/history";
 import { createClient } from "@/lib/supabase/server";
@@ -51,10 +52,12 @@ export default async function BillPage({
   const latestChecks = latestRun((checkRows ?? []).filter((row) => !isDetailRule(row.rule)));
   const detailChecks = latestRun((checkRows ?? []).filter((row) => isDetailRule(row.rule)));
 
-  const histories = lineHistories(
-    (lines ?? []).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })),
-    await loadEarlierLines(supabase, bill.created_at),
-  );
+  const histories = isOneOff(bill.bill_type)
+    ? []
+    : lineHistories(
+        (lines ?? []).map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })),
+        await loadEarlierLines(supabase, bill.created_at),
+      );
 
   const { data: message } = await supabase
     .from("message")

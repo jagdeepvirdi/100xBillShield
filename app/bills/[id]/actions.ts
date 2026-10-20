@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { billInfoSchema } from "@/lib/billInfo";
 import { runChecks } from "@/lib/checks";
+import { isOneOff } from "@/lib/billTypes";
 import { runDetailChecks, type DetailSection } from "@/lib/detailChecks";
 import { redactLabel, redactText } from "@/lib/redact";
 import { wordsChanged } from "@/lib/wordsChanged";
@@ -199,7 +200,7 @@ export async function runBillChecks(formData: FormData) {
   const supabase = await createClient();
   const { data: bill } = await supabase
     .from("bill")
-    .select("provider, period_end, created_at")
+    .select("provider, bill_type, period_end, created_at")
     .eq("id", billId)
     .maybeSingle();
   if (!bill) redirect("/bills");
@@ -227,7 +228,7 @@ export async function runBillChecks(formData: FormData) {
       discountPct: promise.discount === null ? null : Number(promise.discount),
       effectiveFrom: promise.effective_from,
     },
-    previousLines: await loadPreviousLines(supabase, bill),
+    previousLines: isOneOff(bill.bill_type) ? null : await loadPreviousLines(supabase, bill),
     periodEnd: bill.period_end,
   });
   if (results.length === 0) {
