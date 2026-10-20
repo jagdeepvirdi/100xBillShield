@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 
-const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+// Vercel rejects request bodies over 4.5 MB, and the file travels through this server action.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -44,7 +45,7 @@ export async function uploadBill(formData: FormData) {
   if (!(photo instanceof File) || photo.size === 0) fail("Choose a photo or PDF of the bill.");
   const ext = EXTENSIONS[photo.type];
   if (!ext) fail("The file must be a JPG, PNG or WebP image, or a PDF.");
-  if (photo.size > MAX_PHOTO_BYTES) fail("The file is larger than 8 MB.");
+  if (photo.size > MAX_PHOTO_BYTES) fail("The file is larger than 4 MB. Choose a smaller photo or PDF.");
 
   const supabase = await createClient();
   const {
