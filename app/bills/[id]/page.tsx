@@ -6,6 +6,7 @@ import CheckResults from "./CheckResults";
 import CleanBill from "./CleanBill";
 import LinesEditor from "./LinesEditor";
 import MessageBox from "./MessageBox";
+import SentTracker from "./SentTracker";
 
 export default async function BillPage({
   params,
@@ -56,7 +57,7 @@ export default async function BillPage({
 
   const { data: latestMessage } = await supabase
     .from("message")
-    .select("draft")
+    .select("id, draft, sent_text, sent_at, words_changed")
     .eq("bill_id", id)
     .order("created_at", { ascending: false })
     .limit(1)
@@ -109,7 +110,16 @@ export default async function BillPage({
         <section>
           <h2>Message to the company</h2>
           <MessageBox billId={bill.id} />
-          {latestMessage && <pre style={{ whiteSpace: "pre-wrap" }}>{latestMessage.draft}</pre>}
+          {latestMessage && (
+            <SentTracker
+              key={latestMessage.id}
+              messageId={latestMessage.id}
+              draft={latestMessage.draft}
+              sentText={latestMessage.sent_text}
+              sentOn={latestMessage.sent_at ? new Date(latestMessage.sent_at).toLocaleDateString("en-GB") : null}
+              wordsChanged={latestMessage.words_changed}
+            />
+          )}
         </section>
       )}
 

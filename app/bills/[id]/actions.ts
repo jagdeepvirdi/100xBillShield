@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { runChecks } from "@/lib/checks";
 import { redactLabel, redactText } from "@/lib/redact";
+import { wordsChanged } from "@/lib/wordsChanged";
 import { createClient } from "@/lib/supabase/server";
 
 const inputSchema = z.object({
@@ -167,4 +168,40 @@ export async function runBillChecks(formData: FormData) {
 
   revalidatePath(`/bills/${billId}`);
   redirect(`/bills/${billId}`);
+}
+
+const sentSchema = z.object({
+  messageId: z.uuid(),
+  sentText: z.string().trim().min(1).max(5000),
+});
+
+// Records what the user actually sent. sent_at is set on the first save; later edits keep it.
+export async function saveSent(messageId: string, sentText: string): Promise<{ error?: string }> {
+  const parsed = sentSchema.safeParse({ messageId, sentText });
+  if (!parsed.success) return { error: "Paste or type the text you sent." };
+
+  const supabase = await createClient();
+  const { data: message } = await supabase
+    .from("message")
+    .select("draft, sent_at, bill_id")
+    .eq("id", parsed.data.messageId)
+    .maybeSingle();
+  if (!message) return { error: "Message not found." };
+
+  // Account numbers, phone numbers and the like are never stored, even when the user sent them.
+  const sent = redactText(parsed.data.sentText);
+  if (!sent) return { error: "Paste or type the text you sent." };
+
+  const { error } = await supabase
+    .from("message")
+    .update({
+      sent_text: sent,
+      sent_at: message.sent_at ?? new Date().toISOString(),
+      words_changed: wordsChanged(message.draft, sent),
+    })
+    .eq("id", parsed.data.messageId);
+  if (error) return { error: `Could not save: ${error.message}` };
+
+  revalidatePath(`/bills/${message.bill_id}`);
+  return {};
 }
