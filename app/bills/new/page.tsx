@@ -45,7 +45,13 @@ export default async function NewBillPage({
         </p>
         <p>
           <label>
-            Photo <input name="photo" type="file" accept="image/jpeg,image/png,image/webp" required />
+            Photo or PDF{" "}
+            <input
+              name="photo"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              required
+            />
           </label>
         </p>
         <button type="submit">Upload</button>

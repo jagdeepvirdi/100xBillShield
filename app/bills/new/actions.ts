@@ -10,6 +10,7 @@ const EXTENSIONS: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
+  "application/pdf": "pdf",
 };
 
 const optionalText = z.string().trim().transform((v) => v || null);
@@ -40,10 +41,10 @@ export async function uploadBill(formData: FormData) {
   }
 
   const photo = formData.get("photo");
-  if (!(photo instanceof File) || photo.size === 0) fail("Choose a photo of the bill.");
+  if (!(photo instanceof File) || photo.size === 0) fail("Choose a photo or PDF of the bill.");
   const ext = EXTENSIONS[photo.type];
-  if (!ext) fail("The photo must be a JPG, PNG or WebP image.");
-  if (photo.size > MAX_PHOTO_BYTES) fail("The photo is larger than 8 MB.");
+  if (!ext) fail("The file must be a JPG, PNG or WebP image, or a PDF.");
+  if (photo.size > MAX_PHOTO_BYTES) fail("The file is larger than 8 MB.");
 
   const supabase = await createClient();
   const {
