@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classify, runChecks, type CheckLine, type CheckPromise } from "./checks";
+import { classify, runChecks, sumBreakdown, type CheckLine, type CheckPromise } from "./checks";
 
 const line = (label: string, amount: number): CheckLine => ({ label, amount });
 const find = (results: ReturnType<typeof runChecks>, rule: string) => results.find((r) => r.rule.startsWith(rule));
@@ -267,5 +267,24 @@ describe("one-off bills", () => {
   it("compares the billed total with the quote", () => {
     expect(find(run(207.9), "Billed total")).toMatchObject({ verdict: "ok" });
     expect(find(run(190), "Billed total")).toMatchObject({ expected: 190, actual: 207.9, verdict: "wrong" });
+  });
+});
+
+describe("where an unconfirmed sum comes from", () => {
+  it("names the lines counted, the printed total, the gap and the line that explains it", () => {
+    const lines: CheckLine[] = [
+      { id: "s", label: "Service", amount: 100 },
+      { id: "f", label: "Fee", amount: 50 },
+      { id: "t", label: "Total amount due", amount: 100 },
+    ];
+    const breakdown = sumBreakdown(lines)!;
+    expect(breakdown.target).toMatchObject({ id: "t", amount: 100 });
+    expect(breakdown.expected).toBe(150);
+    expect(breakdown.gap).toBe(50);
+    expect(breakdown.suspectIds).toEqual(["f"]);
+  });
+
+  it("is none when the bill has no printed total", () => {
+    expect(sumBreakdown([line("Service", 100)])).toBeNull();
   });
 });

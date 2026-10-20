@@ -27,4 +27,5 @@ const STATE_CLASS = { ok: "ok", wrong: "wrong", disputed: "unexplained", pending
 // An unexplained line that counts as ok is one the user said they expected.
 export const ruleText = (row: CheckRow) => (row.verdict === "unexplained" && row.state === "ok" ? `${row.rule} (you expected this)` : row.rule);
 export const stateLabel = (row: CheckRow) => STATE_LABEL[row.state];
+export const isUnconfirmed = (row: CheckRow) => row.state === "unconfirmed";
 export const stateClass = (row: CheckRow) => `verdict verdict-${STATE_CLASS[row.state]}`;

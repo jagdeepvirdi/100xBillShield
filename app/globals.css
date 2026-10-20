@@ -569,3 +569,17 @@ ol {
   display: flex;
   gap: 0.5rem;
 }
+
+/* A "not confirmed" check links to the lines table and highlights the lines to look at */
+#bill-lines {
+  scroll-margin-top: 1rem;
+}
+
+tr.suspect td {
+  background: var(--warn-bg);
+}
+
+.verdict a {
+  color: inherit;
+  text-decoration: underline;
+}

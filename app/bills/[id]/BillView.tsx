@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { BillStatus } from "@/lib/billStatus";
 import { isOneOff } from "@/lib/billTypes";
+import { sumBreakdown } from "@/lib/checks";
 import type { LineHistory } from "@/lib/history";
 import { STATUS } from "../StatusBadge";
 import { billTypeLabel, formatStamp, periodText } from "../format";
@@ -75,6 +76,12 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
   const sentOn = sentAt ? formatStamp(sentAt) : null;
   // A one-off purchase has no promised plan, so nothing is waited for there.
   const oneOff = isOneOff(bill.bill_type);
+  // Where a "not confirmed" sum comes from, so the lines involved can be found and highlighted.
+  const unconfirmed = shown.some((row) => row.state === "unconfirmed");
+  const breakdown = unconfirmed
+    ? sumBreakdown(lines.map((line) => ({ id: line.id, label: line.label, amount: Number(line.amount) })))
+    : null;
+  const suspects = new Set(breakdown?.suspectIds ?? []);
   const hasRates = lines.some((line) => line.units !== null || line.rate !== null);
   const step = nextStep({ hasLines: lines.length > 0, hasPromise: oneOff || Boolean(promise), hasChecks: checks.length > 0, hasIssues, message });
 
@@ -118,7 +125,7 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
       {(questions.length > 0 || answered.length > 0) && <AnswerBox billId={bill.id} questions={questions} answered={answered} />}
 
       {lines.length > 0 ? (
-        <section>
+        <section id="bill-lines">
           <h2>Bill lines</h2>
           <div className="table-wrap">
             <table>
@@ -132,8 +139,11 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
               </thead>
               <tbody>
                 {lines.map((line) => (
-                  <tr key={line.id}>
-                    <td>{line.label}</td>
+                  <tr key={line.id} className={suspects.has(line.id) ? "suspect" : undefined}>
+                    <td>
+                      {line.label}
+                      {suspects.has(line.id) && <span className="verdict verdict-unexplained"> check this line</span>}
+                    </td>
                     {hasRates && <td className="num">{line.units === null ? "" : Number(line.units)}</td>}
                     {hasRates && <td className="num">{line.rate === null ? "" : Number(line.rate)}</td>}
                     <td className="num">{Number(line.amount).toFixed(2)}</td>
@@ -156,6 +166,19 @@ export default function BillView({ bill, lines, promise, checks, detailChecks, s
           {checkError && <p role="alert">{checkError}</p>}
           {allOk && <CleanBill rows={shown} labels={labels} />}
           {shown.length > 0 && !allOk && <CheckResults rows={shown} labels={labels} />}
+          {breakdown && (
+            <div className="callout warn">
+              <h2>Why a total is not confirmed</h2>
+              <p>
+                The lines counted add up to {breakdown.expected.toFixed(2)}, but the printed total ({breakdown.target.label}) is{" "}
+                {breakdown.target.amount.toFixed(2)}, a gap of {breakdown.gap.toFixed(2)}.
+                {suspects.size > 0
+                  ? ` The highlighted ${suspects.size === 1 ? "line has" : "lines have"} that amount: it may be a total printed again, or a line read twice.`
+                  : ""}{" "}
+                Compare the lines with your paper bill and fix them under Edit lines.
+              </p>
+            </div>
+          )}
           <form action={runBillChecks}>
             <input type="hidden" name="bill_id" value={bill.id} />
             <button type="submit" className={checks.length > 0 ? "secondary" : undefined}>

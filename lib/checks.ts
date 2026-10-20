@@ -301,6 +301,36 @@ function quoteCheck(lines: Classified[], quote: number | null): CheckResult[] {
   return [judge("Billed total vs the total you were quoted", toCents(quote), total.cents, total.id)];
 }
 
+// Shows where an unconfirmed sum comes from: the lines counted, the printed total they were compared with, the gap,
+// and the lines whose amount equals that gap (usually a total printed again, or a line read twice).
+export type SumBreakdown = {
+  target: { id?: string; label: string; amount: number };
+  counted: { id?: string; label: string; amount: number }[];
+  expected: number;
+  gap: number;
+  suspectIds: string[];
+};
+
+export function sumBreakdown(input: CheckLine[]): SumBreakdown | null {
+  const lines = classifyAll(input);
+  const total = ofKind(lines, "total").at(-1);
+  const currentTotal = ofKind(lines, "current_total").at(-1);
+  const hasBalance = ofKind(lines, "opening").length > 0 || ofKind(lines, "payment").length > 0;
+  const target = hasBalance ? currentTotal : (currentTotal ?? total);
+  if (!target) return null;
+
+  const current = ofKind(lines, "charge", "tax", "discount", "subsidy", "rounding");
+  const expected = pickSum(current, target.cents);
+  const gap = Math.abs(expected - target.cents);
+  return {
+    target: { id: target.id, label: target.label, amount: target.cents / 100 },
+    counted: current.map((l) => ({ id: l.id, label: l.label, amount: l.cents / 100 })),
+    expected: expected / 100,
+    gap: gap / 100,
+    suspectIds: current.filter((l) => close(Math.abs(l.cents), gap) && l.id).map((l) => l.id!),
+  };
+}
+
 // Digits and punctuation are dropped so "Energy 120 to 150" matches "Energy 150 to 180".
 export const keyOf = (label: string) => label.toLowerCase().replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
 
