@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { geminiGenerate, withFallback } from "@/lib/llm";
 
 export const extractedLinesSchema = z.array(
   z.object({
@@ -17,8 +18,6 @@ Rules:
 - Use a negative amount for discounts, credits and subsidies.
 - Leave out account numbers, customer or consumer ids, phone numbers and addresses.
 - If the file is not a bill or nothing is readable, reply with [].`;
-
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 
 const MIME_TYPES: Record<string, string> = {
   jpg: "image/jpeg",
@@ -69,45 +68,17 @@ async function readWithGemini(signedUrl: string, storagePath: string): Promise<E
   if (!file.ok) throw new Error(`Could not download the bill (${file.status}).`);
   const data = Buffer.from(await file.arrayBuffer()).toString("base64");
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": process.env.GEMINI_API_KEY!,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ inline_data: { mime_type: mimeType, data } }, { text: PROMPT }] }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0 },
-      }),
-    },
-  );
-  if (!response.ok) throw new Error(`Gemini request failed (${response.status}).`);
-
-  const body = await response.json();
-  const text = body?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (typeof text !== "string") throw new Error("Gemini returned no text.");
+  const text = await geminiGenerate([{ inline_data: { mime_type: mimeType, data } }, { text: PROMPT }], {
+    responseMimeType: "application/json",
+    temperature: 0,
+  });
   return parseLines(text);
 }
 
 // The model reads the file through a short-lived signed URL; it never computes anything.
-// Gemini is used only when Claude cannot be called (no key, credits used up, rate limit, outage).
-export async function readBillLines(signedUrl: string, storagePath: string): Promise<ExtractedLine[]> {
-  const geminiAvailable = Boolean(process.env.GEMINI_API_KEY);
-
-  if (!process.env.ANTHROPIC_API_KEY) {
-    if (!geminiAvailable) throw new Error("No LLM key is configured.");
-    return readWithGemini(signedUrl, storagePath);
-  }
-
-  try {
-    return await readWithClaude(signedUrl, storagePath);
-  } catch (error) {
-    const claudeUnavailable =
-      error instanceof Anthropic.APIError || error instanceof Anthropic.APIConnectionError;
-    if (!claudeUnavailable || !geminiAvailable) throw error;
-    console.warn("Claude unavailable, falling back to Gemini:", error.message);
-    return readWithGemini(signedUrl, storagePath);
-  }
+export function readBillLines(signedUrl: string, storagePath: string): Promise<ExtractedLine[]> {
+  return withFallback(
+    () => readWithClaude(signedUrl, storagePath),
+    () => readWithGemini(signedUrl, storagePath),
+  );
 }

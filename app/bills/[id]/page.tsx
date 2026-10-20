@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { runBillChecks, savePromise } from "./actions";
 import CheckResults from "./CheckResults";
 import LinesEditor from "./LinesEditor";
+import MessageBox from "./MessageBox";
 
 export default async function BillPage({
   params,
@@ -49,6 +50,15 @@ export default async function BillPage({
     .limit(200);
   const latestChecks = checkRows?.filter((row) => row.created_at === checkRows[0].created_at) ?? [];
   const lineLabels = new Map((lines ?? []).map((line) => [line.id, line.label]));
+  const hasIssues = latestChecks.some((row) => row.verdict !== "ok" && row.line_item_id);
+
+  const { data: latestMessage } = await supabase
+    .from("message")
+    .select("draft")
+    .eq("bill_id", id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
   return (
     <main>
@@ -89,6 +99,14 @@ export default async function BillPage({
             <button type="submit">{latestChecks.length > 0 ? "Run the checks again" : "Run the checks"}</button>
           </form>
           <p>Run them again after you save or change the promise.</p>
+        </section>
+      )}
+
+      {(hasIssues || latestMessage) && (
+        <section>
+          <h2>Message to the company</h2>
+          {hasIssues && <MessageBox billId={bill.id} />}
+          {latestMessage && <pre style={{ whiteSpace: "pre-wrap" }}>{latestMessage.draft}</pre>}
         </section>
       )}
 
